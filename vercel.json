@@ -12,8 +12,12 @@
       "dest": "server.js"
     },
     {
-      "src": "/(.*)",
+      "src": "/(style.css|app.js)",
       "dest": "public/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "public/index.html"
     }
   ]
 }
