@@ -16,6 +16,19 @@ function kvFetch(url, options = {}) {
                 headers: options.headers || {}
             };
             
+            // Set standard headers for proxy compatibility
+            if (!reqOptions.headers['User-Agent']) {
+                reqOptions.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+            }
+            
+            if (reqOptions.method === 'POST' || reqOptions.method === 'PUT') {
+                if (options.body) {
+                    reqOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
+                } else {
+                    reqOptions.headers['Content-Length'] = '0';
+                }
+            }
+            
             const timeout = options.timeout || 8000;
             
             const req = https.request(reqOptions, (res) => {
