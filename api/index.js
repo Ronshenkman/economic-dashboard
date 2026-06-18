@@ -33,7 +33,7 @@ try {
     console.error('Failed to load cache file:', err.message);
 }
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Simple CSV parser that handles double quotes
 function parseCSV(csvText) {
