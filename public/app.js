@@ -170,6 +170,60 @@ function setupEventListeners() {
 
         btnCloseSidebar.addEventListener('click', closeSidebarFn);
         sidebarOverlay.addEventListener('click', closeSidebarFn);
+
+        const btnSaveSidebarChanges = document.getElementById('btn-save-sidebar-changes');
+        if (btnSaveSidebarChanges) {
+            btnSaveSidebarChanges.addEventListener('click', async () => {
+                const oldHtml = btnSaveSidebarChanges.innerHTML;
+                const oldBg = btnSaveSidebarChanges.style.background;
+                btnSaveSidebarChanges.disabled = true;
+                btnSaveSidebarChanges.innerHTML = `
+                    <div class="spinner" style="width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 0.5rem; display: inline-block; vertical-align: middle;"></div>
+                    <span>שומר שינויים...</span>
+                `;
+                
+                try {
+                    const res = await fetch('/api/active-series', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(STATE.activeSeries)
+                    });
+                    
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.success) {
+                            btnSaveSidebarChanges.style.background = '#10b981';
+                            btnSaveSidebarChanges.innerHTML = `
+                                <i data-lucide="check" style="width: 16px; height: 16px;"></i>
+                                <span>נשמר בענן בהצלחה!</span>
+                            `;
+                            lucide.createIcons();
+                        } else {
+                            throw new Error("Save returned success: false");
+                        }
+                    } else {
+                        throw new Error("HTTP error " + res.status);
+                    }
+                } catch (err) {
+                    console.error("Failed manually saving sidebar changes:", err);
+                    btnSaveSidebarChanges.style.background = '#ef4444';
+                    btnSaveSidebarChanges.innerHTML = `
+                        <i data-lucide="alert-triangle" style="width: 16px; height: 16px;"></i>
+                        <span>שגיאה בשמירה!</span>
+                    `;
+                    lucide.createIcons();
+                } finally {
+                    setTimeout(() => {
+                        btnSaveSidebarChanges.disabled = false;
+                        btnSaveSidebarChanges.innerHTML = oldHtml;
+                        btnSaveSidebarChanges.style.background = oldBg;
+                        lucide.createIcons();
+                    }, 2500);
+                }
+            });
+        }
     }
 }
 

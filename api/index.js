@@ -1,6 +1,55 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+
+// A robust custom fetch function using Node's built-in https module
+// Compatible with all Node.js versions and environments (including serverless)
+function kvFetch(url, options = {}) {
+    return new Promise((resolve, reject) => {
+        try {
+            const urlObj = new URL(url);
+            const reqOptions = {
+                hostname: urlObj.hostname,
+                path: urlObj.pathname + urlObj.search,
+                method: options.method || 'GET',
+                headers: options.headers || {}
+            };
+            
+            const timeout = options.timeout || 8000;
+            
+            const req = https.request(reqOptions, (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                res.on('end', () => {
+                    resolve({
+                        ok: res.statusCode >= 200 && res.statusCode < 300,
+                        status: res.statusCode,
+                        text: () => Promise.resolve(data)
+                    });
+                });
+            });
+            
+            req.on('error', (err) => {
+                reject(err);
+            });
+            
+            req.setTimeout(timeout, () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+            
+            if (options.body) {
+                req.write(options.body);
+            }
+            req.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,10 +97,7 @@ async function initActiveSeries() {
     // 1. Try loading from keyvalue.immanuel.co
     try {
         const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 sec timeout
-        const res = await fetch(getUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        const res = await kvFetch(getUrl, { timeout: 8000 });
         
         if (res.ok) {
             let text = await res.text();
@@ -475,10 +521,7 @@ app.get('/api/active-series', async (req, res) => {
     
     try {
         const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const kvRes = await fetch(getUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        const kvRes = await kvFetch(getUrl, { timeout: 8000 });
         
         if (kvRes.ok) {
             let text = await kvRes.text();
@@ -522,10 +565,7 @@ app.post('/api/active-series', async (req, res) => {
     try {
         const hexData = Buffer.from(JSON.stringify(activeSeries), 'utf8').toString('hex');
         const updateUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/${KV_KEY}/${hexData}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const kvRes = await fetch(updateUrl, { method: 'POST', signal: controller.signal });
-        clearTimeout(timeoutId);
+        const kvRes = await kvFetch(updateUrl, { method: 'POST', timeout: 8000 });
         
         if (kvRes.ok) {
             const resp = await kvRes.text();

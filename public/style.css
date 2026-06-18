@@ -1034,4 +1034,12 @@ select:focus, input:focus {
     color: #fca5a5;
 }
 
+.sidebar-footer {
+    padding: 1.25rem 1.5rem;
+    border-top: 1px solid var(--panel-border);
+    background: rgba(11, 15, 25, 0.95);
+    display: flex;
+    justify-content: stretch;
+}
+
 
