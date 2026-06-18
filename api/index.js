@@ -33,8 +33,60 @@ try {
     console.error('Failed to load cache file:', err.message);
 }
 
+app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// Global active series state file and key
+const ACTIVE_SERIES_FILE = path.join(__dirname, 'active_series.json');
+const KV_APP_KEY = "econ_dash_ronshenkman_active_series_v2"; // Unique key for the user
+const KV_KEY = "active_series";
+
+let activeSeries = [];
+
+// Initialize active series
+async function initActiveSeries() {
+    // 1. Try loading from keyvalue.immanuel.co
+    try {
+        const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 sec timeout
+        const res = await fetch(getUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+            let text = await res.text();
+            text = text.trim();
+            if (text.startsWith('"') && text.endsWith('"')) {
+                text = text.slice(1, -1);
+            }
+            if (text) {
+                const decoded = Buffer.from(text, 'hex').toString('utf8');
+                activeSeries = JSON.parse(decoded);
+                console.log("Loaded active series from KV store:", activeSeries);
+                return;
+            }
+        }
+    } catch (err) {
+        console.error("Failed to load active series from KV store, trying local file:", err.message);
+    }
+    
+    // 2. Try loading from local file
+    try {
+        if (fs.existsSync(ACTIVE_SERIES_FILE)) {
+            activeSeries = JSON.parse(fs.readFileSync(ACTIVE_SERIES_FILE, 'utf8'));
+            console.log("Loaded active series from local file:", activeSeries);
+            return;
+        }
+    } catch (err) {
+        console.error("Failed to load active series from local file:", err.message);
+    }
+    
+    // Default to empty array
+    activeSeries = [];
+}
+
+// Call init on startup
+initActiveSeries();
 // Simple CSV parser that handles double quotes
 function parseCSV(csvText) {
     const lines = csvText.trim().split(/\r?\n/);
@@ -373,6 +425,73 @@ app.get('/api/series-search', async (req, res) => {
         console.error(`Error handling /api/series-search:`, err.message);
         res.status(500).json({ error: `Internal Server Error: ${err.message}` });
     }
+});
+
+// Endpoint to get active series
+app.get('/api/active-series', async (req, res) => {
+    try {
+        const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const kvRes = await fetch(getUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (kvRes.ok) {
+            let text = await kvRes.text();
+            text = text.trim();
+            if (text.startsWith('"') && text.endsWith('"')) {
+                text = text.slice(1, -1);
+            }
+            if (text) {
+                const decoded = Buffer.from(text, 'hex').toString('utf8');
+                activeSeries = JSON.parse(decoded);
+            }
+        }
+    } catch (err) {
+        console.error("Failed to update active series from KV store in GET, using cached:", err.message);
+    }
+    res.json(activeSeries);
+});
+
+// Endpoint to update active series
+app.post('/api/active-series', async (req, res) => {
+    const list = req.body;
+    if (!Array.isArray(list)) {
+        return res.status(400).json({ error: 'Body must be a JSON array of series' });
+    }
+    
+    activeSeries = list;
+    
+    // 1. Save to KV store
+    let kvSaved = false;
+    try {
+        const hexData = Buffer.from(JSON.stringify(activeSeries), 'utf8').toString('hex');
+        const updateUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/${KV_KEY}/${hexData}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const kvRes = await fetch(updateUrl, { method: 'POST', signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (kvRes.ok) {
+            const resp = await kvRes.text();
+            if (resp.trim() === 'true') {
+                kvSaved = true;
+            }
+        }
+    } catch (err) {
+        console.error("Failed to save active series to KV store:", err.message);
+    }
+    
+    // 2. Save to local file (fails gracefully on read-only filesystem)
+    let fileSaved = false;
+    try {
+        fs.writeFileSync(ACTIVE_SERIES_FILE, JSON.stringify(activeSeries, null, 2));
+        fileSaved = true;
+    } catch (err) {
+        console.log("Local file write skipped or failed (expected on serverless):", err.message);
+    }
+    
+    res.json({ success: true, kvSaved, fileSaved });
 });
 
 if (process.env.NODE_ENV !== 'production' || require.main === module) {

@@ -19,8 +19,8 @@ const CHART_COLORS = [
 ];
 
 // Initialize application
-document.addEventListener('DOMContentLoaded', () => {
-    initLocalState();
+document.addEventListener('DOMContentLoaded', async () => {
+    await initLocalState();
     setupEventListeners();
     setupSearchUI();
     refreshDashboard();
@@ -41,8 +41,22 @@ function getActiveSeriesObjects() {
     });
 }
 
-// Load active series from localStorage or fallback to defaults
-function initLocalState() {
+// Load active series from server or fallback to defaults/localStorage
+async function initLocalState() {
+    try {
+        const res = await fetch('/api/active-series');
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                STATE.activeSeries = data;
+                localStorage.setItem('economic_dashboard_series_v2', JSON.stringify(STATE.activeSeries));
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load active series from server, using localStorage:', e);
+    }
+
     const saved = localStorage.getItem('economic_dashboard_series_v2');
     if (saved) {
         try {
@@ -62,9 +76,20 @@ function setDefaultActiveSeries() {
     }));
 }
 
-// Save active series list to localStorage
+// Save active series list to localStorage and sync with server
 function saveStateToLocal() {
     localStorage.setItem('economic_dashboard_series_v2', JSON.stringify(STATE.activeSeries));
+    
+    // Sync with server in background
+    fetch('/api/active-series', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(STATE.activeSeries)
+    }).catch(err => {
+        console.error("Failed to save active series to server:", err);
+    });
 }
 
 // Setup elements and listeners
@@ -101,9 +126,14 @@ function setupEventListeners() {
     document.getElementById('end-date-input').addEventListener('change', refreshDashboard);
 
     // Refresh button click
-    btnRefresh.addEventListener('click', () => {
+    btnRefresh.addEventListener('click', async () => {
         const icon = btnRefresh.querySelector('i');
         icon.classList.add('spin-animation');
+        try {
+            await initLocalState(); // Sync latest active series from server
+        } catch (e) {
+            console.error("Failed to sync active series on refresh:", e);
+        }
         refreshDashboard().finally(() => {
             setTimeout(() => icon.classList.remove('spin-animation'), 600);
         });
