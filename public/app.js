@@ -112,6 +112,35 @@ function setupEventListeners() {
     // Add series form submit
     addForm.addEventListener('submit', handleAddSeries);
 
+    // Sidebar management toggle buttons
+    const btnOpenSidebar = document.getElementById('btn-open-sidebar');
+    const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    const sidebarOrder = document.getElementById('sidebar-order');
+
+    if (btnOpenSidebar && btnCloseSidebar && sidebarOverlay && sidebarOrder) {
+        btnOpenSidebar.addEventListener('click', () => {
+            sidebarOverlay.classList.remove('hidden');
+            sidebarOrder.classList.remove('hidden');
+            // Allow DOM to update before transition class
+            setTimeout(() => sidebarOrder.classList.add('active'), 10);
+            renderSidebarSeriesList();
+        });
+
+        const closeSidebarFn = () => {
+            sidebarOrder.classList.remove('active');
+            sidebarOverlay.classList.add('hidden');
+            // Hide after slide-out transition
+            setTimeout(() => {
+                if (!sidebarOrder.classList.contains('active')) {
+                    sidebarOrder.classList.add('hidden');
+                }
+            }, 300);
+        };
+
+        btnCloseSidebar.addEventListener('click', closeSidebarFn);
+        sidebarOverlay.addEventListener('click', closeSidebarFn);
+    }
 }
 
 // Calculate startPeriod and endPeriod based on selected filters (or custom picker override)
@@ -604,6 +633,12 @@ async function handleAddSeries(e) {
         
         await refreshDashboard();
         
+        // Update sidebar if it is open/rendered
+        const sidebarList = document.getElementById('sidebar-series-list');
+        if (sidebarList) {
+            renderSidebarSeriesList();
+        }
+        
         input.value = '';
     } catch (err) {
         showFormError(`קוד סדרה לא נמצא או שגיאה בקבלת הנתונים. פרטי השגיאה: ${err.message}`);
@@ -626,6 +661,12 @@ function removeSeries(code) {
     STATE.activeSeries = getActiveSeriesObjects().filter(s => s.code !== code);
     saveStateToLocal();
     refreshDashboard();
+    
+    // Update sidebar if it is open/rendered
+    const sidebarList = document.getElementById('sidebar-series-list');
+    if (sidebarList) {
+        renderSidebarSeriesList();
+    }
 }
 
 // Translate common SDMX metadata keys to user-friendly Hebrew labels
@@ -820,6 +861,12 @@ function setupSearchUI() {
                     saveStateToLocal();
                     await refreshDashboard();
                     
+                    // Update sidebar if it is open/rendered
+                    const sidebarList = document.getElementById('sidebar-series-list');
+                    if (sidebarList) {
+                        renderSidebarSeriesList();
+                    }
+                    
                     // Update the button state to "Added"
                     btn.className = "btn btn-primary btn-add-table";
                     btn.style.opacity = "0.5";
@@ -838,4 +885,144 @@ function setupSearchUI() {
             });
         });
     }
+}
+
+// Render the list of series inside the sidebar manage panel
+function renderSidebarSeriesList() {
+    const listEl = document.getElementById('sidebar-series-list');
+    if (!listEl) return;
+    
+    const activeObjects = getActiveSeriesObjects();
+    
+    if (activeObjects.length === 0) {
+        listEl.innerHTML = `
+            <li style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.9rem;">
+                אין סדרות פעילות בדשבורד.
+            </li>
+        `;
+        return;
+    }
+    
+    listEl.innerHTML = activeObjects.map((s, index) => {
+        const cached = STATE.dataCache[s.code];
+        const name = cached ? cached.name : s.code;
+        
+        const isFirst = index === 0;
+        const isLast = index === activeObjects.length - 1;
+        
+        return `
+            <li class="sidebar-item" draggable="true" data-code="${s.code}" data-index="${index}">
+                <div class="sidebar-item-info">
+                    <div class="sidebar-item-name" title="${name}">${name}</div>
+                    <div class="sidebar-item-code" title="${s.code}">${s.code}</div>
+                </div>
+                <div class="sidebar-item-actions">
+                    <button type="button" class="btn-sidebar-arrow btn-move-up" data-index="${index}" ${isFirst ? 'disabled' : ''} title="הזז למעלה">
+                        <i data-lucide="chevron-up" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button type="button" class="btn-sidebar-arrow btn-move-down" data-index="${index}" ${isLast ? 'disabled' : ''} title="הזז למטה">
+                        <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button type="button" class="btn-sidebar-delete" data-code="${s.code}" title="הסר מהדשבורד">
+                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                    </button>
+                </div>
+            </li>
+        `;
+    }).join('');
+    
+    lucide.createIcons();
+    setupSidebarEvents();
+}
+
+// Attach Drag & Drop and Up/Down Button Click handlers to sidebar elements
+function setupSidebarEvents() {
+    const listEl = document.getElementById('sidebar-series-list');
+    if (!listEl) return;
+    
+    const items = listEl.querySelectorAll('.sidebar-item');
+    
+    // Up click handler
+    listEl.querySelectorAll('.btn-move-up').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.getAttribute('data-index'));
+            swapSeries(index, index - 1);
+        });
+    });
+    
+    // Down click handler
+    listEl.querySelectorAll('.btn-move-down').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.getAttribute('data-index'));
+            swapSeries(index, index + 1);
+        });
+    });
+    
+    // Delete click handler
+    listEl.querySelectorAll('.btn-sidebar-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const code = btn.getAttribute('data-code');
+            removeSeries(code);
+            renderSidebarSeriesList();
+        });
+    });
+    
+    // Drag & Drop event bindings
+    items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.getAttribute('data-index'));
+        });
+        
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+        });
+    });
+    
+    listEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const draggingItem = listEl.querySelector('.dragging');
+        if (!draggingItem) return;
+        
+        const siblings = [...listEl.querySelectorAll('.sidebar-item:not(.dragging)')];
+        
+        const nextSibling = siblings.find(sibling => {
+            const box = sibling.getBoundingClientRect();
+            const offset = e.clientY - box.top - box.height / 2;
+            return offset < 0;
+        });
+        
+        listEl.insertBefore(draggingItem, nextSibling);
+    });
+    
+    listEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        
+        // Rebuild order from DOM child ordering
+        const newOrderCodes = [...listEl.querySelectorAll('.sidebar-item')].map(item => item.getAttribute('data-code'));
+        const activeObjects = getActiveSeriesObjects();
+        
+        const newActiveSeries = newOrderCodes.map(code => {
+            return activeObjects.find(s => s.code === code);
+        }).filter(s => s !== undefined);
+        
+        STATE.activeSeries = newActiveSeries;
+        saveStateToLocal();
+        refreshDashboard();
+        renderSidebarSeriesList();
+    });
+}
+
+// Swap positions of two active series indices
+function swapSeries(idxA, idxB) {
+    const temp = STATE.activeSeries[idxA];
+    STATE.activeSeries[idxA] = STATE.activeSeries[idxB];
+    STATE.activeSeries[idxB] = temp;
+    saveStateToLocal();
+    refreshDashboard();
+    renderSidebarSeriesList();
 }
