@@ -98,50 +98,115 @@ try {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Global active series state file and key
-const ACTIVE_SERIES_FILE = path.join(__dirname, 'active_series.json');
-const KV_APP_KEY = "econ_dash_ronshenkman_active_series_v2"; // Unique key for the user
-const KV_KEY = "active_series";
+// Global active series state
+// Uses multi-key approach on keyvalue.immanuel.co to avoid URL length limits:
+//   Key "n" -> count of series (hex encoded number string)
+//   Key "sN" -> "CODE:RANGE" for series index N (hex encoded)
+const KV_APP_KEY = "econ_dash_ronshenkman_v6"; // Unique app key
 
 let activeSeries = [];
 
-// Initialize active series
-async function initActiveSeries() {
-    // 1. Try loading from keyvalue.immanuel.co
+// Helper: decode a raw KV response string (strips quotes, decodes hex)
+function decodeKvValue(rawText) {
+    let text = rawText.trim();
+    if (text.startsWith('"') && text.endsWith('"')) {
+        text = text.slice(1, -1);
+    }
+    if (!text) return null;
+    return Buffer.from(text, 'hex').toString('utf8');
+}
+
+// Load all active series from multi-key KV store
+async function loadSeriesFromKV() {
     try {
-        const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
-        const res = await kvFetch(getUrl, { timeout: 8000 });
+        // Step 1: Get count
+        const countUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/n`;
+        const countRes = await kvFetch(countUrl, { timeout: 8000 });
+        if (!countRes.ok) return null;
+        const countText = await countRes.text();
+        const countDecoded = decodeKvValue(countText);
+        if (!countDecoded) return [];
+        const count = parseInt(countDecoded);
+        if (isNaN(count) || count < 0) return [];
+        if (count === 0) return [];
         
-        if (res.ok) {
-            let text = await res.text();
-            text = text.trim();
-            if (text.startsWith('"') && text.endsWith('"')) {
-                text = text.slice(1, -1);
-            }
-            if (text) {
-                const decoded = Buffer.from(text, 'hex').toString('utf8');
-                activeSeries = JSON.parse(decoded);
-                console.log("Loaded active series from KV store:", activeSeries);
-                return;
-            }
-        }
+        // Step 2: Load all series in parallel
+        const promises = Array.from({ length: count }, (_, i) => {
+            const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/s${i}`;
+            return kvFetch(url, { timeout: 8000 }).then(async res => {
+                if (!res.ok) return null;
+                const text = await res.text();
+                const decoded = decodeKvValue(text);
+                if (!decoded) return null;
+                const colonIdx = decoded.indexOf(':');
+                if (colonIdx === -1) return null;
+                const code = decoded.substring(0, colonIdx);
+                const range = decoded.substring(colonIdx + 1);
+                return { code, range };
+            }).catch(() => null);
+        });
+        
+        const results = await Promise.all(promises);
+        return results.filter(Boolean);
     } catch (err) {
-        console.error("Failed to load active series from KV store, trying local file:", err.message);
+        console.error("Failed to load series from KV store:", err.message);
+        return null;
     }
-    
-    // 2. Try loading from local file
+}
+
+// Save all active series to multi-key KV store
+async function saveSeriestoKV(seriesList) {
     try {
-        if (fs.existsSync(ACTIVE_SERIES_FILE)) {
-            activeSeries = JSON.parse(fs.readFileSync(ACTIVE_SERIES_FILE, 'utf8'));
-            console.log("Loaded active series from local file:", activeSeries);
-            return;
+        // Save count first
+        const countHex = Buffer.from(String(seriesList.length), 'utf8').toString('hex');
+        const countUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/n/${countHex}`;
+        const countRes = await kvFetch(countUrl, { method: 'POST', timeout: 8000 });
+        if (!countRes.ok) {
+            const t = await countRes.text();
+            console.error('Failed to save count to KV:', countRes.status, t.substring(0, 100));
+            return false;
         }
+        
+        // Save each series in parallel
+        const savePromises = seriesList.map((s, i) => {
+            const value = `${s.code}:${s.range}`;
+            const valueHex = Buffer.from(value, 'utf8').toString('hex');
+            const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/s${i}/${valueHex}`;
+            return kvFetch(url, { method: 'POST', timeout: 8000 }).then(async res => {
+                if (!res.ok) {
+                    const t = await res.text();
+                    console.error(`Failed to save series ${i} (${s.code}):`, res.status, t.substring(0, 100));
+                    return false;
+                }
+                return true;
+            }).catch(err => {
+                console.error(`Error saving series ${i} (${s.code}):`, err.message);
+                return false;
+            });
+        });
+        
+        const results = await Promise.all(savePromises);
+        const allOk = results.every(Boolean);
+        if (!allOk) {
+            console.error('Some series failed to save to KV store');
+        }
+        return allOk;
     } catch (err) {
-        console.error("Failed to load active series from local file:", err.message);
+        console.error("Failed to save series to KV store:", err.message);
+        return false;
     }
-    
-    // Default to empty array
-    activeSeries = [];
+}
+
+// Initialize active series on startup
+async function initActiveSeries() {
+    const kvSeries = await loadSeriesFromKV();
+    if (kvSeries !== null && kvSeries.length >= 0) {
+        activeSeries = kvSeries;
+        console.log("Loaded active series from KV store:", activeSeries);
+    } else {
+        activeSeries = [];
+        console.log("Starting with empty active series list.");
+    }
 }
 
 // Call init on startup
@@ -532,34 +597,12 @@ app.get('/api/series-search', async (req, res) => {
 app.get('/api/active-series', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     
-    try {
-        const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
-        const kvRes = await kvFetch(getUrl, { timeout: 8000 });
-        
-        if (kvRes.ok) {
-            let text = await kvRes.text();
-            text = text.trim();
-            if (text.startsWith('"') && text.endsWith('"')) {
-                text = text.slice(1, -1);
-            }
-            if (text) {
-                const decoded = Buffer.from(text, 'hex').toString('utf8');
-                activeSeries = JSON.parse(decoded);
-            }
-        }
-    } catch (err) {
-        console.error("Failed to update active series from KV store in GET, using cached:", err.message);
+    // Always fetch fresh from KV store
+    const kvSeries = await loadSeriesFromKV();
+    if (kvSeries !== null) {
+        activeSeries = kvSeries;
     }
-    
-    if (activeSeries.length === 0) {
-        try {
-            if (fs.existsSync(ACTIVE_SERIES_FILE)) {
-                activeSeries = JSON.parse(fs.readFileSync(ACTIVE_SERIES_FILE, 'utf8'));
-            }
-        } catch (err) {
-            console.error("Failed to read local active series file fallback in GET:", err.message);
-        }
-    }
+    // else: use in-memory cached value
     
     res.json(activeSeries);
 });
@@ -567,60 +610,29 @@ app.get('/api/active-series', async (req, res) => {
 // Endpoint to update active series
 app.post('/api/active-series', async (req, res) => {
     const list = req.body;
-    console.log("POST /api/active-series received. req.body:", list);
-    console.log("req.headers:", req.headers);
+    console.log("POST /api/active-series received:", JSON.stringify(list));
     
     if (!list || !Array.isArray(list)) {
         return res.status(400).json({ 
             success: false, 
-            error: 'Body must be a JSON array of series. Received type: ' + (typeof list) + ', isArray: ' + Array.isArray(list) 
+            error: 'Body must be a JSON array of series. Received type: ' + (typeof list) 
         });
     }
     
     activeSeries = list;
     
-    // 1. Save to KV store
-    let kvSaved = false;
-    let kvError = null;
-    try {
-        const hexData = Buffer.from(JSON.stringify(activeSeries), 'utf8').toString('hex');
-        const updateUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/${KV_KEY}/${hexData}`;
-        const kvRes = await kvFetch(updateUrl, { method: 'POST', timeout: 8000 });
-        
-        if (kvRes.ok) {
-            const resp = await kvRes.text();
-            const respCleaned = resp.trim().replace(/^"|"$/g, '');
-            if (respCleaned === 'true') {
-                kvSaved = true;
-            } else {
-                kvError = "KV store returned non-true value: " + resp;
-            }
-        } else {
-            kvError = "KV store returned HTTP status " + kvRes.status;
-        }
-    } catch (err) {
-        console.error("Failed to save active series to KV store:", err.message);
-        kvError = err.message;
-    }
+    // Save to KV store using multi-key approach
+    const kvSaved = await saveSeriestoKV(activeSeries);
     
-    // 2. Save to local file (fails gracefully on read-only filesystem)
-    let fileSaved = false;
-    let fileError = null;
-    try {
-        fs.writeFileSync(ACTIVE_SERIES_FILE, JSON.stringify(activeSeries, null, 2));
-        fileSaved = true;
-    } catch (err) {
-        console.log("Local file write skipped or failed (expected on serverless):", err.message);
-        fileError = err.message;
-    }
-    
-    const success = kvSaved || fileSaved;
-    if (success) {
-        res.json({ success: true, kvSaved, fileSaved });
+    if (kvSaved) {
+        console.log("Successfully saved", activeSeries.length, "series to KV store");
+        res.json({ success: true, count: activeSeries.length });
     } else {
+        console.error("Failed to save series to KV store");
+        // Still return success if we have in-memory state (best effort)
         res.status(500).json({ 
             success: false, 
-            error: `Failed to save changes. KV Error: ${kvError || 'None'}. File Error: ${fileError || 'None'}` 
+            error: 'Failed to persist to KV store. Changes are in-memory only until next save.' 
         });
     }
 });
