@@ -554,14 +554,21 @@ app.get('/api/active-series', async (req, res) => {
 // Endpoint to update active series
 app.post('/api/active-series', async (req, res) => {
     const list = req.body;
-    if (!Array.isArray(list)) {
-        return res.status(400).json({ error: 'Body must be a JSON array of series' });
+    console.log("POST /api/active-series received. req.body:", list);
+    console.log("req.headers:", req.headers);
+    
+    if (!list || !Array.isArray(list)) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Body must be a JSON array of series. Received type: ' + (typeof list) + ', isArray: ' + Array.isArray(list) 
+        });
     }
     
     activeSeries = list;
     
     // 1. Save to KV store
     let kvSaved = false;
+    let kvError = null;
     try {
         const hexData = Buffer.from(JSON.stringify(activeSeries), 'utf8').toString('hex');
         const updateUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/${KV_KEY}/${hexData}`;
@@ -572,22 +579,37 @@ app.post('/api/active-series', async (req, res) => {
             const respCleaned = resp.trim().replace(/^"|"$/g, '');
             if (respCleaned === 'true') {
                 kvSaved = true;
+            } else {
+                kvError = "KV store returned non-true value: " + resp;
             }
+        } else {
+            kvError = "KV store returned HTTP status " + kvRes.status;
         }
     } catch (err) {
         console.error("Failed to save active series to KV store:", err.message);
+        kvError = err.message;
     }
     
     // 2. Save to local file (fails gracefully on read-only filesystem)
     let fileSaved = false;
+    let fileError = null;
     try {
         fs.writeFileSync(ACTIVE_SERIES_FILE, JSON.stringify(activeSeries, null, 2));
         fileSaved = true;
     } catch (err) {
         console.log("Local file write skipped or failed (expected on serverless):", err.message);
+        fileError = err.message;
     }
     
-    res.json({ success: kvSaved || fileSaved, kvSaved, fileSaved });
+    const success = kvSaved || fileSaved;
+    if (success) {
+        res.json({ success: true, kvSaved, fileSaved });
+    } else {
+        res.status(500).json({ 
+            success: false, 
+            error: `Failed to save changes. KV Error: ${kvError || 'None'}. File Error: ${fileError || 'None'}` 
+        });
+    }
 });
 
 if (process.env.NODE_ENV !== 'production' || require.main === module) {

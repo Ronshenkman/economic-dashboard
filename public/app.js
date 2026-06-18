@@ -191,6 +191,7 @@ function setupEventListeners() {
                         body: JSON.stringify(STATE.activeSeries)
                     });
                     
+                    let errorMsg = "שגיאה לא ידועה";
                     if (res.ok) {
                         const data = await res.json();
                         if (data.success) {
@@ -200,14 +201,22 @@ function setupEventListeners() {
                                 <span>נשמר בענן בהצלחה!</span>
                             `;
                             lucide.createIcons();
+                            return;
                         } else {
-                            throw new Error("Save returned success: false");
+                            errorMsg = data.error || "Save returned success: false";
                         }
                     } else {
-                        throw new Error("HTTP error " + res.status);
+                        try {
+                            const errData = await res.json();
+                            errorMsg = errData.error || ("HTTP status " + res.status);
+                        } catch (e) {
+                            errorMsg = "HTTP error " + res.status;
+                        }
                     }
+                    throw new Error(errorMsg);
                 } catch (err) {
                     console.error("Failed manually saving sidebar changes:", err);
+                    alert("שגיאה בשמירה בענן:\n" + err.message);
                     btnSaveSidebarChanges.style.background = '#ef4444';
                     btnSaveSidebarChanges.innerHTML = `
                         <i data-lucide="alert-triangle" style="width: 16px; height: 16px;"></i>
