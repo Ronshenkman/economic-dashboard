@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>דשבורד כלכלי - מאגר הסדרות של בנק ישראל</title>
+    <meta name="description" content="דשבורד אינטראקטיבי המציג נתונים כלכליים ומדדי פיקוח, הנשלפים ישירות ממאגר הסדרות (API) של בנק ישראל, עם אפשרות לסינון תקופות והוספת סדרות מותאמות אישית.">
+    
+    <!-- Google Fonts: Outfit for titles and Assistant for Hebrew body text -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js and date adapter for handling time axes -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Lucide Icons for premium feel -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="glass-bg-radial"></div>
+
+    <div class="app-container">
+        <!-- Header Section -->
+        <header class="app-header">
+            <div class="header-main">
+                <div class="logo-area">
+                    <div class="logo-icon">
+                        <i data-lucide="trending-up"></i>
+                    </div>
+                    <div>
+                        <h1 id="main-title">דשבורד כלכלי לאומי</h1>
+                        <p class="subtitle">ניתוח והצגת נתונים בזמן אמת ממאגר הסדרות של בנק ישראל</p>
+                    </div>
+                </div>
+                
+                <!-- Global Controls (Date selectors, preset selectors) -->
+                <div class="global-controls" id="global-controls-panel">
+                    <div class="control-group">
+                        <label for="date-range-select">טווח זמן מהיר</label>
+                        <select id="date-range-select">
+                            <option value="1y">שנה אחרונה</option>
+                            <option value="3y">3 שנים אחרונות</option>
+                            <option value="5y" selected>5 שנים אחרונות</option>
+                            <option value="10y">10 שנים אחרונות</option>
+                            <option value="all">כל ההיסטוריה</option>
+                            <option value="custom">התאמה אישית...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group date-picker-group hidden" id="custom-date-pickers">
+                        <div class="date-input-wrap">
+                            <label for="start-date-input">מתאריך</label>
+                            <input type="date" id="start-date-input">
+                        </div>
+                        <div class="date-input-wrap">
+                            <label for="end-date-input">עד תאריך</label>
+                            <input type="date" id="end-date-input">
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" id="btn-refresh" title="רענן נתונים">
+                        <i data-lucide="refresh-cw"></i>
+                        <span>רענן</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="app-content">
+            <!-- Add Custom Series Control Panel -->
+            <section class="add-series-section glass-panel" aria-labelledby="add-series-title">
+                <h2 id="add-series-title" class="section-title">
+                    <i data-lucide="plus-circle" class="icon-accent"></i>
+                    הוספת סדרה כלכלית לדשבורד
+                </h2>
+                
+                <form id="add-series-form" class="add-series-form">
+                    <div class="input-wrapper">
+                        <i data-lucide="hash" class="input-icon"></i>
+                        <input type="text" id="series-code-input" placeholder="הזן קוד סדרה (לדוגמה: RER_USD_ILS, DWH_SRC_0463_MA...)" required>
+                    </div>
+                    <button type="submit" class="btn btn-accent" id="btn-submit-series">
+                        <span id="btn-text">הוסף לדשבורד</span>
+                        <div class="spinner hidden" id="submit-spinner"></div>
+                    </button>
+                </form>
+                <div class="form-feedback error hidden" id="form-error-msg">
+                    <i data-lucide="alert-circle"></i>
+                    <span id="error-text">קוד סדרה לא נמצא או שגיאה בחיבור לשרת.</span>
+                </div>
+                
+                <!-- Examples helper -->
+                <div class="examples-container">
+                    <span class="examples-label">סדרות פופולריות לניסוי:</span>
+                    <button type="button" class="btn-chip" data-code="RER_USD_ILS">שער חליפין דולר (RER_USD_ILS)</button>
+                    <button type="button" class="btn-chip" data-code="RER_EUR_ILS">שער חליפין אירו (RER_EUR_ILS)</button>
+                    <button type="button" class="btn-chip" data-code="IR_BOI">ריבית בנק ישראל (IR_BOI)</button>
+                </div>
+            </section>
+
+            <!-- Dashboard Grid -->
+            <section class="dashboard-grid" id="dashboard-grid" aria-label="מדדים כלכליים">
+                <!-- Loading State placeholder -->
+                <div class="grid-loading" id="grid-loading-indicator">
+                    <div class="large-spinner"></div>
+                    <p>טוען נתונים ומכין את הגרפים...</p>
+                </div>
+                
+                <!-- Dynamic cards will be injected here -->
+            </section>
+        </main>
+
+        <!-- Footer Section -->
+        <footer class="app-footer">
+            <p>© 2026 דשבורד כלכלי לאומי. הנתונים מתקבלים מ-API מאגר הסדרות של בנק ישראל.</p>
+            <div class="footer-links">
+                <a href="https://www.boi.org.il/" target="_blank" rel="noopener noreferrer">אתר בנק ישראל</a>
+                <span class="dot-separator">•</span>
+                <a href="https://edge.boi.gov.il/" target="_blank" rel="noopener noreferrer">מאגר הסדרות הממשלתי</a>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Script Entrypoint -->
+    <script src="app.js"></script>
+    <script>
+        // Initialize lucide icons on load
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>

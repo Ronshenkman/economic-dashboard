@@ -1,0 +1,12 @@
+{
+  "name": "economic-dashboard",
+  "version": "1.0.0",
+  "description": "Economic Dashboard utilizing Bank of Israel API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

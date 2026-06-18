@@ -1,0 +1,499 @@
+[
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "BCAP",
+    "version": "1.0",
+    "names": {
+      "he": "הלימות ההון",
+      "en": "Capital adequacy"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "BLIQ",
+    "version": "1.0",
+    "names": {
+      "he": "נזילות",
+      "en": "Liquidity"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "B_DGTL",
+    "version": "1.0",
+    "names": {
+      "he": "בנקאות מקוונת",
+      "en": "Digital Banking"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "B_OPNB",
+    "version": "1.0",
+    "names": {
+      "en": "Open Banking",
+      "he": "בנקאות פתוחה"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "B_STF_SRV",
+    "version": "1.0",
+    "names": {
+      "he": "סקר שביעות רצון בנקים",
+      "en": "Banking Satisfaction Survey"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "CCFR",
+    "version": "1.0",
+    "names": {
+      "he": "דוחות כספיים - חברות כרטיסי אשראי",
+      "en": "Financial Statements - Credit Cards companies"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "CRDT",
+    "version": "1.0",
+    "names": {
+      "en": "Credit",
+      "he": "אשראי בנקאות"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "FEES_DASH",
+    "version": "1.0",
+    "names": {
+      "en": "דשבורד עמלות"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "FEES_TRF",
+    "version": "1.0",
+    "names": {
+      "en": "Fees_Taarifon",
+      "he": "עמלות בנקים - תעריפון"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "INTEREST_DASH",
+    "version": "1.0",
+    "names": {
+      "en": "דשבורד ריביות"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "WEB_M",
+    "version": "1.0",
+    "names": {
+      "he": "אתר עזר חודשי"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "WEB_OP",
+    "version": "1.0",
+    "names": {
+      "he": "אתר עזר נתונים תפעוליים"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "WEB_Q",
+    "version": "1.0",
+    "names": {
+      "en": "WEB_Q"
+    }
+  },
+  {
+    "agencyID": "BOI.BankingSupervision",
+    "id": "WEB_Q_CC",
+    "version": "1.0",
+    "names": {
+      "he": "סדרות לאתר - חברות כרטיסי אשראי",
+      "en": "Credit Card - series for website"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "ACC",
+    "version": "1.0",
+    "names": {
+      "he": "דוחות כספיים - בנק ישראל"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "ATM",
+    "version": "1.0",
+    "names": {
+      "he": "ATM משיכות ממכשירי"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BBS_99",
+    "version": "1.0",
+    "names": {
+      "he": "מאזן חודשי - בנקים",
+      "en": "Monthly Balance Sheets - Banks"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BFR_99",
+    "version": "1.0",
+    "names": {
+      "he": "דוחות כספיים - בנקים",
+      "en": "Financial Statements - Banks"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BIR",
+    "version": "1.0",
+    "names": {
+      "he": "ריביות וביצועים - לא לדיור",
+      "en": "Interest rates and business volume - exc. housing loans"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BIR_MRTG_99",
+    "version": "1.0",
+    "names": {
+      "he": "ריביות וביצועים לדיור",
+      "en": "Interest rates and business volume - housing loans"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BKN",
+    "version": "1.0",
+    "names": {
+      "he": "שטרות ומעות",
+      "en": "Banknotes and Coins"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BMB_99",
+    "version": "1.0",
+    "names": {
+      "he": "יתרות דיור",
+      "en": "Balances for housing"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BOP",
+    "version": "1.0",
+    "names": {
+      "he": "מאזן תשלומים"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BR",
+    "version": "1.0",
+    "names": {
+      "he": "ריבית בנק ישראל",
+      "en": "BOI interest rate"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "BTS_7",
+    "version": "1.0",
+    "names": {
+      "he": "סקר מגמות",
+      "en": "Business Tendency Survey"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "CAP",
+    "version": "1.0",
+    "names": {
+      "he": "מלאי הון",
+      "en": "Capital Stock"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "CARDS",
+    "version": "1.0",
+    "names": {
+      "he": "כרטיסי חיוב"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "CCIR",
+    "version": "1.0",
+    "names": {
+      "he": "ריביות וביצועים - חברות כרטיסי אשראי",
+      "en": "Credit Card Companies - Interest Rates and Business Volume"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "CCP",
+    "version": "1.0",
+    "names": {
+      "he": "רכישות בכרטיסי אשראי"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "CHEQUES",
+    "version": "1.0",
+    "names": {
+      "he": "שיקים",
+      "en": "Checks"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "CONS",
+    "version": "1.0",
+    "names": {
+      "he": "בנייה",
+      "en": "Construction"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "DEBT_AGG",
+    "version": "1.0",
+    "names": {
+      "he": "מצרפי החוב והאשראי",
+      "en": "Debt and credit aggregates"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "DEM",
+    "version": "1.0",
+    "names": {
+      "he": "דמוגרפיה"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "DRV",
+    "version": "1.0",
+    "names": {
+      "en": "Trade Turnover",
+      "he": "מחזורי מסחר"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "ECON_IND",
+    "version": "1.0",
+    "names": {
+      "he": "אינדיקטורים לפעילות המשק"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "ENR",
+    "version": "1.0",
+    "names": {
+      "he": "אנרגיה",
+      "en": "Energy"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "EXR",
+    "version": "1.0",
+    "names": {
+      "he": "שערי חליפין",
+      "en": "Exchange rates"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "EXS",
+    "version": "1.0",
+    "names": {
+      "en": "External Statistics",
+      "he": "פעילות מול חו'ל"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "EZER",
+    "version": "1.0",
+    "names": {
+      "en": "EZER",
+      "he": "עזר"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "EZER_PIK_MOS",
+    "version": "1.0",
+    "names": {
+      "he": "עזר פיקוח מו'ס"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "FTR",
+    "version": "1.0",
+    "names": {
+      "he": "סחר חוץ",
+      "en": "Foreign Trade"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "INSINV",
+    "version": "1.0",
+    "names": {
+      "he": "מוסדיים"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "INSINV2",
+    "version": "1.0",
+    "names": {
+      "he": "המשקיעים המוסדיים",
+      "en": "Institutional Investors"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "LBM",
+    "version": "1.0",
+    "names": {
+      "he": "שוק העבודה",
+      "en": "Labor Market"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "MAG",
+    "version": "1.0",
+    "names": {
+      "he": "מצרפים מוניטריים",
+      "en": "Monetay Aggregates"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "MASAV",
+    "version": "1.0",
+    "names": {
+      "he": "מס'ב",
+      "en": "ACH-MASAV"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "MF",
+    "version": "1.0",
+    "names": {
+      "he": "קרנות הנאמנות",
+      "en": "Mutual Funds"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "MNF",
+    "version": "1.0",
+    "names": {
+      "he": "תעשייה",
+      "en": "Industry"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "NA",
+    "version": "1.0",
+    "names": {
+      "he": "חשבונות לאומיים",
+      "en": "National Accounts"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "PRI",
+    "version": "1.0",
+    "names": {
+      "he": "מדדי מחירים"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "PS",
+    "version": "1.0",
+    "names": {
+      "he": "מגזר ציבורי",
+      "en": "Public Sector"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "REAL_ES_DF",
+    "version": "1.0",
+    "names": {
+      "he": "נדל'ן",
+      "en": "Real estate"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "REV",
+    "version": "1.0",
+    "names": {
+      "he": "מדדי פידיון"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "SECDWH",
+    "version": "1.0",
+    "names": {
+      "he": "ניירות ערך – בורסה ת\"א",
+      "en": "Securities TASE"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "TLB",
+    "version": "1.0",
+    "names": {
+      "he": "ריביות תלבור",
+      "en": "Telbor rates"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "ZAHAV",
+    "version": "1.0",
+    "names": {
+      "he": "מערכת זה'ב",
+      "en": "RTGS-ZAHAV"
+    }
+  },
+  {
+    "agencyID": "BOI.STATISTICS",
+    "id": "ZCM",
+    "version": "1.0",
+    "names": {
+      "he": "ציפיות לאינפלציה ועקום 0",
+      "en": "Inflation expectations and zero yield curve"
+    }
+  }
+]
