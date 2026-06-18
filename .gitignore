@@ -1,4 +1,5 @@
 node_modules/
 series_dataflow_cache.json
+search_cache/
 .DS_Store
 *.log

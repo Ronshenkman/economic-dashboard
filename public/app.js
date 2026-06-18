@@ -832,7 +832,7 @@ function setupSearchUI() {
         if (items.length === 0) {
             resultsTbody.innerHTML = `
                 <tr>
-                    <td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">
                         לא נמצאו סדרות העונות לסינון שהזנת.
                     </td>
                 </tr>
@@ -858,6 +858,9 @@ function setupSearchUI() {
                 <tr>
                     <td>${item.name}</td>
                     <td>${item.code}</td>
+                    <td>${item.frequency || 'לא ידוע'}</td>
+                    <td>${item.lastDate || 'לא ידוע'}</td>
+                    <td>${item.seasonalAdjustment || 'לא רלוונטי'}</td>
                     <td style="text-align: center; white-space: nowrap;">${buttonHtml}</td>
                 </tr>
             `;

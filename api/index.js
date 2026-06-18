@@ -396,9 +396,51 @@ app.get('/api/series-search', async (req, res) => {
             
             if (!code || !name) return null;
             
+            // Extract metadata
+            let freqKeyIdx = cleanKeys.indexOf('תדירות');
+            if (freqKeyIdx === -1) freqKeyIdx = cleanKeys.indexOf('FREQ');
+            let frequency = freqKeyIdx !== -1 ? row[keys[freqKeyIdx]] : null;
+            
+            if (frequency) {
+                frequency = frequency.trim();
+                const freqMap = {
+                    'D': 'יומי',
+                    'W': 'שבועי',
+                    'M': 'חודשי',
+                    'Q': 'רבעוני',
+                    'A': 'שנתי'
+                };
+                frequency = freqMap[frequency] || frequency;
+            }
+            
+            const dateKeyIdx = cleanKeys.indexOf('TIME_PERIOD');
+            const lastDate = dateKeyIdx !== -1 ? row[keys[dateKeyIdx]] : null;
+            
+            let adjKeyIdx = cleanKeys.indexOf('ניכוי עונתיות');
+            if (adjKeyIdx === -1) adjKeyIdx = cleanKeys.indexOf('ADJUSTMENT');
+            let seasonalAdjustment = adjKeyIdx !== -1 ? row[keys[adjKeyIdx]] : null;
+            
+            if (seasonalAdjustment) {
+                seasonalAdjustment = seasonalAdjustment.trim();
+                if (seasonalAdjustment === '_Z') {
+                    seasonalAdjustment = 'לא רלוונטי';
+                } else {
+                    const adjMap = {
+                        'N': 'נתון מקורי',
+                        'S': 'מנוכה עונתיות',
+                        'T': 'מגמה',
+                        'Y': 'מנוכה עונתיות'
+                    };
+                    seasonalAdjustment = adjMap[seasonalAdjustment] || seasonalAdjustment;
+                }
+            }
+            
             return {
                 code: code.trim(),
-                name: name.trim()
+                name: name.trim(),
+                frequency: frequency || 'לא ידוע',
+                lastDate: lastDate ? lastDate.trim() : 'לא ידוע',
+                seasonalAdjustment: seasonalAdjustment || 'לא רלוונטי'
             };
         }).filter(item => item !== null);
         
