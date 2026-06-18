@@ -1,11 +1,7 @@
 // Dashboard State Management
 const STATE = {
     // Default series codes requested by user
-    defaultSeries: [
-        "DWH_SRC_0463_MA.D.PD.BOI.0.V",
-        "CLS11_S3_EX_C_MEDIUM_LOW_M_TREND.EX.EX_2.C.X._Z.C.USD.USD.V._Z._Z.MIX_TRA._Z.INC_SP._Z._Z._Z.M",
-        "CLS11_S3_EX_C_LOW_M_TREND.EX.EX_2.C.X._Z.C.USD.USD.V._Z._Z.TRA._Z._Z._Z._Z._Z.M"
-    ],
+    defaultSeries: [],
     // Currently active series objects: { code, range }
     activeSeries: [],
     // Map of fullCode -> Chart.js instance
@@ -115,13 +111,6 @@ function setupEventListeners() {
     // Add series form submit
     addForm.addEventListener('submit', handleAddSeries);
 
-    // Examples chips click handler
-    document.querySelectorAll('.btn-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            document.getElementById('series-code-input').value = chip.getAttribute('data-code');
-            document.getElementById('btn-submit-series').click();
-        });
-    });
 }
 
 // Calculate startPeriod and endPeriod based on selected filters (or custom picker override)
