@@ -44,7 +44,7 @@ function getActiveSeriesObjects() {
 // Load active series from server or fallback to defaults/localStorage
 async function initLocalState() {
     try {
-        const res = await fetch('/api/active-series');
+        const res = await fetch('/api/active-series', { cache: 'no-store' });
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) {

@@ -471,10 +471,12 @@ app.get('/api/series-search', async (req, res) => {
 
 // Endpoint to get active series
 app.get('/api/active-series', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    
     try {
         const getUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/${KV_KEY}`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const kvRes = await fetch(getUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
         
@@ -492,6 +494,17 @@ app.get('/api/active-series', async (req, res) => {
     } catch (err) {
         console.error("Failed to update active series from KV store in GET, using cached:", err.message);
     }
+    
+    if (activeSeries.length === 0) {
+        try {
+            if (fs.existsSync(ACTIVE_SERIES_FILE)) {
+                activeSeries = JSON.parse(fs.readFileSync(ACTIVE_SERIES_FILE, 'utf8'));
+            }
+        } catch (err) {
+            console.error("Failed to read local active series file fallback in GET:", err.message);
+        }
+    }
+    
     res.json(activeSeries);
 });
 
@@ -510,7 +523,7 @@ app.post('/api/active-series', async (req, res) => {
         const hexData = Buffer.from(JSON.stringify(activeSeries), 'utf8').toString('hex');
         const updateUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/${KV_KEY}/${hexData}`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const kvRes = await fetch(updateUrl, { method: 'POST', signal: controller.signal });
         clearTimeout(timeoutId);
         
