@@ -92,8 +92,63 @@
                 <div class="form-feedback error hidden" id="form-error-msg">
                     <i data-lucide="alert-circle"></i>
                     <span id="error-text">קוד סדרה לא נמצא או שגיאה בחיבור לשרת.</span>
+
+                <!-- Search panel toggle button -->
+                <div class="search-category-wrap">
+                    <button type="button" class="btn btn-secondary" id="btn-toggle-search">
+                        <i data-lucide="search"></i>
+                        <span>חיפוש ועיון בסדרות לפי נושאים...</span>
+                    </button>
                 </div>
-                
+
+                <!-- Collapsible search panel -->
+                <div id="search-panel" class="search-panel hidden">
+                    <div class="search-panel-controls">
+                        <div class="control-group">
+                            <label for="search-category-select">בחר קטגוריה / נושא</label>
+                            <select id="search-category-select">
+                                <option value="" disabled selected>בחר נושא מהרשימה...</option>
+                            </select>
+                        </div>
+                        <div class="control-group search-filter-group hidden" id="search-filter-wrap">
+                            <label for="search-keyword-input">סינון לפי שם או קוד סדרה</label>
+                            <div class="search-input-wrap">
+                                <i data-lucide="filter"></i>
+                                <input type="text" id="search-keyword-input" placeholder="הקלד מילות מפתח (למשל: דולר, ריבית, יצוא...)">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="search-results-container">
+                        <!-- Default state -->
+                        <div class="search-placeholder" id="search-placeholder-msg">
+                            <i data-lucide="folder-open"></i>
+                            <p>בחר קטגוריה למעלה כדי להציג את רשימת הסדרות הזמינות.</p>
+                        </div>
+                        
+                        <!-- Loading indicator -->
+                        <div class="search-placeholder hidden" id="search-loading-indicator">
+                            <div class="spinner"></div>
+                            <p>טוען את רשימת הסדרות משרתי בנק ישראל...</p>
+                        </div>
+                        
+                        <!-- Table of results -->
+                        <div class="results-list-wrapper hidden" id="results-list-wrapper">
+                            <table class="search-results-table">
+                                <thead>
+                                    <tr>
+                                        <th>שם הסדרה</th>
+                                        <th>קוד סדרה</th>
+                                        <th style="width: 100px; text-align: center;">פעולה</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="search-results-tbody">
+                                    <!-- Rows injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- Dashboard Grid -->

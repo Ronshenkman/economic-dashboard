@@ -22,6 +22,7 @@ const CHART_COLORS = [
 document.addEventListener('DOMContentLoaded', () => {
     initLocalState();
     setupEventListeners();
+    setupSearchUI();
     refreshDashboard();
 });
 
@@ -653,4 +654,188 @@ function translateMetadataKey(key) {
     };
     
     return translations[key] || key;
+}
+
+// Setup Category-based Search UI
+function setupSearchUI() {
+    const btnToggleSearch = document.getElementById('btn-toggle-search');
+    const searchPanel = document.getElementById('search-panel');
+    const categorySelect = document.getElementById('search-category-select');
+    const filterWrap = document.getElementById('search-filter-wrap');
+    const keywordInput = document.getElementById('search-keyword-input');
+    const placeholderMsg = document.getElementById('search-placeholder-msg');
+    const loadingIndicator = document.getElementById('search-loading-indicator');
+    const resultsWrapper = document.getElementById('results-list-wrapper');
+    const resultsTbody = document.getElementById('search-results-tbody');
+    
+    let currentCategorySeries = [];
+    let categoriesLoaded = false;
+
+    // Toggle search panel visibility
+    btnToggleSearch.addEventListener('click', async () => {
+        const isHidden = searchPanel.classList.toggle('hidden');
+        
+        // Load categories dropdown once
+        if (!isHidden && !categoriesLoaded) {
+            try {
+                const res = await fetch('/api/dataflows');
+                if (!res.ok) throw new Error("Failed to load");
+                const dataflows = await res.json();
+                
+                // Sort by Hebrew name if possible
+                dataflows.sort((a, b) => {
+                    const nameA = a.names.he || a.names.en || '';
+                    const nameB = b.names.he || b.names.en || '';
+                    return nameA.localeCompare(nameB, 'he');
+                });
+                
+                categorySelect.innerHTML = `<option value="" disabled selected>בחר נושא מהרשימה...</option>` +
+                    dataflows.map(df => {
+                        const name = df.names.he || df.names.en || df.id;
+                        return `<option value="${df.id}" data-agency="${df.agencyID}">${name} (${df.id})</option>`;
+                    }).join('');
+                
+                categoriesLoaded = true;
+            } catch (err) {
+                console.error("Failed to load categories:", err);
+                categorySelect.innerHTML = `<option value="" disabled>שגיאה בטעינת קטגוריות</option>`;
+            }
+        }
+    });
+
+    // Handle category selection
+    categorySelect.addEventListener('change', async (e) => {
+        const option = categorySelect.selectedOptions[0];
+        const dataflowID = option.value;
+        const agencyID = option.getAttribute('data-agency');
+        
+        if (!dataflowID || !agencyID) return;
+        
+        // Show loading state
+        placeholderMsg.classList.add('hidden');
+        resultsWrapper.classList.add('hidden');
+        filterWrap.classList.add('hidden');
+        loadingIndicator.classList.remove('hidden');
+        keywordInput.value = '';
+        currentCategorySeries = [];
+        
+        try {
+            const res = await fetch(`/api/series-search?dataflowID=${dataflowID}&agencyID=${agencyID}`);
+            if (!res.ok) throw new Error("API error");
+            
+            currentCategorySeries = await res.json();
+            
+            // Render table
+            renderSearchResults(currentCategorySeries);
+            
+            loadingIndicator.classList.add('hidden');
+            resultsWrapper.classList.remove('hidden');
+            filterWrap.classList.remove('hidden');
+        } catch (err) {
+            console.error("Error loading series list:", err);
+            loadingIndicator.classList.add('hidden');
+            placeholderMsg.classList.remove('hidden');
+            placeholderMsg.querySelector('p').textContent = "שגיאה בטעינת סדרות הנתונים מקטגוריה זו. נסה נושא אחר.";
+        }
+    });
+
+    // Handle real-time filtering
+    keywordInput.addEventListener('input', () => {
+        const query = keywordInput.value.trim().toLowerCase();
+        if (!query) {
+            renderSearchResults(currentCategorySeries);
+            return;
+        }
+        
+        const filtered = currentCategorySeries.filter(item => {
+            const codeMatch = item.code.toLowerCase().includes(query);
+            const nameMatch = item.name.toLowerCase().includes(query);
+            return codeMatch || nameMatch;
+        });
+        
+        renderSearchResults(filtered);
+    });
+
+    // Render search results to the table
+    function renderSearchResults(items) {
+        if (items.length === 0) {
+            resultsTbody.innerHTML = `
+                <tr>
+                    <td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                        לא נמצאו סדרות העונות לסינון שהזנת.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        const activeCodes = getActiveSeriesObjects().map(s => s.code);
+        
+        resultsTbody.innerHTML = items.map(item => {
+            const isAlreadyAdded = activeCodes.includes(item.code);
+            const buttonHtml = isAlreadyAdded 
+                ? `<button type="button" class="btn btn-primary btn-add-table" disabled style="opacity: 0.5; background: rgba(16, 185, 129, 0.1); color: #a7f3d0; border-color: rgba(16, 185, 129, 0.2); pointer-events: none;">
+                       <i data-lucide="check" style="width: 14px; height: 14px;"></i>
+                       <span>נוסף</span>
+                   </button>`
+                : `<button type="button" class="btn btn-accent btn-add-table" data-code="${item.code}">
+                       <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                       <span>הוסף</span>
+                   </button>`;
+            
+            return `
+                <tr>
+                    <td>${item.name}</td>
+                    <td>${item.code}</td>
+                    <td style="text-align: center; white-space: nowrap;">${buttonHtml}</td>
+                </tr>
+            `;
+        }).join('');
+        
+        lucide.createIcons();
+        
+        // Add click events to table add buttons
+        resultsTbody.querySelectorAll('.btn-add-table:not([disabled])').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const code = btn.getAttribute('data-code');
+                if (!code) return;
+                
+                // Show loading spinner on the button
+                const oldHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = `<div class="spinner" style="width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>`;
+                
+                try {
+                    // Call the add series logic
+                    const activeObjects = getActiveSeriesObjects();
+                    if (activeObjects.some(s => s.code === code)) {
+                        alert("הסדרה הזו כבר קיימת בדשבורד שלך.");
+                        return;
+                    }
+                    
+                    const { startPeriod, endPeriod } = calculateDateParamsForRange("5y");
+                    await fetchSeriesData(code, startPeriod, endPeriod);
+                    
+                    STATE.activeSeries.push({ code, range: "5y" });
+                    saveStateToLocal();
+                    await refreshDashboard();
+                    
+                    // Update the button state to "Added"
+                    btn.className = "btn btn-primary btn-add-table";
+                    btn.style.opacity = "0.5";
+                    btn.style.background = "rgba(16, 185, 129, 0.1)";
+                    btn.style.color = "#a7f3d0";
+                    btn.style.borderColor = "rgba(16, 185, 129, 0.2)";
+                    btn.style.pointerEvents = "none";
+                    btn.innerHTML = `<i data-lucide="check" style="width: 14px; height: 14px;"></i><span>נוסף</span>`;
+                    lucide.createIcons();
+                } catch (err) {
+                    alert(`שגיאה בהוספת הסדרה: ${err.message}`);
+                    btn.disabled = false;
+                    btn.innerHTML = oldHtml;
+                    lucide.createIcons();
+                }
+            });
+        });
+    }
 }

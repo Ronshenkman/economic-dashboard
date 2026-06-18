@@ -283,6 +283,98 @@ app.get('/api/dataflows', (req, res) => {
     res.json(dataflows);
 });
 
+// Endpoint to fetch and parse all series under a specific dataflow (with cache)
+app.get('/api/series-search', async (req, res) => {
+    const { dataflowID, agencyID } = req.query;
+    if (!dataflowID || !agencyID) {
+        return res.status(400).json({ error: 'Missing required parameters: dataflowID, agencyID' });
+    }
+    
+    const searchCacheDir = path.join(__dirname, 'search_cache');
+    if (!fs.existsSync(searchCacheDir)) {
+        try { fs.mkdirSync(searchCacheDir); } catch (e) {}
+    }
+    
+    const cacheFilePath = path.join(searchCacheDir, `${dataflowID}.json`);
+    if (fs.existsSync(cacheFilePath)) {
+        try {
+            const cachedData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+            return res.json(cachedData);
+        } catch (e) {
+            // ignore and refetch
+        }
+    }
+    
+    try {
+        const url = `https://edge.boi.gov.il/FusionEdgeServer/sdmx/v2/data/dataflow/${agencyID}/${dataflowID}/1.0/*?format=csv&lastNObservations=1&labels=both&locale=he&bom=include`;
+        console.log(`Fetching series list for ${dataflowID} from BOI API...`);
+        
+        const boiRes = await fetch(url);
+        if (!boiRes.ok) {
+            return res.status(boiRes.status).json({ error: `BOI API error: ${boiRes.statusText}` });
+        }
+        
+        const csvText = await boiRes.text();
+        const parsed = parseCSV(csvText);
+        
+        const list = parsed.map(row => {
+            const keys = Object.keys(row);
+            if (keys.length < 2) return null;
+            
+            // Handle BOM or clean keys
+            const cleanKeys = keys.map(k => k.replace(/^\uFEFF/, ''));
+            const codeKeyIdx = cleanKeys.indexOf('SERIES_CODE');
+            
+            let code = null;
+            let name = null;
+            
+            if (codeKeyIdx !== -1) {
+                code = row[keys[codeKeyIdx]];
+                // Search for the name column
+                const nameKeyIdx = cleanKeys.findIndex(k => k.includes('שם סדרה') || k.includes('NAME') || k.includes('TITLE') || k.includes('SHORT_TITLE'));
+                if (nameKeyIdx !== -1) {
+                    name = row[keys[nameKeyIdx]];
+                } else {
+                    name = row[keys[1]];
+                }
+            } else {
+                code = row[keys[0]];
+                name = row[keys[1]];
+            }
+            
+            if (!code || !name) return null;
+            
+            return {
+                code: code.trim(),
+                name: name.trim()
+            };
+        }).filter(item => item !== null);
+        
+        // Remove duplicates if any
+        const uniqueList = [];
+        const seen = new Set();
+        for (const item of list) {
+            if (!seen.has(item.code)) {
+                seen.add(item.code);
+                uniqueList.push(item);
+            }
+        }
+        
+        // Save to cache
+        try {
+            fs.writeFileSync(cacheFilePath, JSON.stringify(uniqueList, null, 2));
+        } catch (err) {
+            console.error('Failed to write search cache file:', err.message);
+        }
+        
+        res.json(uniqueList);
+        
+    } catch (err) {
+        console.error(`Error handling /api/series-search:`, err.message);
+        res.status(500).json({ error: `Internal Server Error: ${err.message}` });
+    }
+});
+
 if (process.env.NODE_ENV !== 'production' || require.main === module) {
     app.listen(PORT, () => {
         console.log(`Server is running on http://localhost:${PORT}`);
