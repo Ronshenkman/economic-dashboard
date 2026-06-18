@@ -569,7 +569,8 @@ app.post('/api/active-series', async (req, res) => {
         
         if (kvRes.ok) {
             const resp = await kvRes.text();
-            if (resp.trim() === 'true') {
+            const respCleaned = resp.trim().replace(/^"|"$/g, '');
+            if (respCleaned === 'true') {
                 kvSaved = true;
             }
         }
@@ -586,7 +587,7 @@ app.post('/api/active-series', async (req, res) => {
         console.log("Local file write skipped or failed (expected on serverless):", err.message);
     }
     
-    res.json({ success: true, kvSaved, fileSaved });
+    res.json({ success: kvSaved || fileSaved, kvSaved, fileSaved });
 });
 
 if (process.env.NODE_ENV !== 'production' || require.main === module) {
