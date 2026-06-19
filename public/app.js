@@ -234,6 +234,30 @@ function setupEventListeners() {
             });
         }
     }
+
+    // Floating Merge Bar actions
+    const btnMergeAction = document.getElementById('btn-merge-action');
+    const btnMergeCancel = document.getElementById('btn-merge-cancel');
+    
+    if (btnMergeAction && btnMergeCancel) {
+        btnMergeAction.addEventListener('click', mergeSelectedCharts);
+        btnMergeCancel.addEventListener('click', () => {
+            document.querySelectorAll('.card-select-checkbox:checked').forEach(cb => {
+                cb.checked = false;
+            });
+            updateMergeFloatingBar();
+        });
+    }
+
+    // Grid change delegation for checkboxes
+    const grid = document.getElementById('dashboard-grid');
+    if (grid) {
+        grid.addEventListener('change', (e) => {
+            if (e.target.classList.contains('card-select-checkbox')) {
+                updateMergeFloatingBar();
+            }
+        });
+    }
 }
 
 // Calculate startPeriod and endPeriod based on selected filters (or custom picker override)
@@ -271,6 +295,31 @@ function formatDateForInput(date) {
 }
 
 // Refresh the entire dashboard view
+// Fetch single series or merged series datasets in parallel
+async function fetchItemData(s) {
+    const { startPeriod, endPeriod } = calculateDateParamsForRange(s.range);
+    if (s.merged) {
+        const promises = s.codes.map(async (code) => {
+            try {
+                const data = await fetchSeriesData(code, startPeriod, endPeriod);
+                return { code, data, error: null };
+            } catch (err) {
+                return { code, data: null, error: err.message };
+            }
+        });
+        const datasets = await Promise.all(promises);
+        return { ...s, datasets };
+    } else {
+        try {
+            const data = await fetchSeriesData(s.code, startPeriod, endPeriod);
+            return { ...s, data, error: null };
+        } catch (err) {
+            return { ...s, data: null, error: err.message };
+        }
+    }
+}
+
+// Refresh the entire dashboard view
 async function refreshDashboard() {
     const grid = document.getElementById('dashboard-grid');
     const loader = document.getElementById('grid-loading-indicator');
@@ -299,30 +348,37 @@ async function refreshDashboard() {
         return;
     }
 
-    // Fetch all active series in parallel, each with its own local range
-    const fetchPromises = activeObjects.map(s => {
-        const { startPeriod, endPeriod } = calculateDateParamsForRange(s.range);
-        return fetchSeriesData(s.code, startPeriod, endPeriod)
-            .then(data => ({ code: s.code, range: s.range, data, error: null }))
-            .catch(err => ({ code: s.code, range: s.range, data: null, error: err.message }));
-    });
+    // Fetch all active items in parallel
+    const fetchPromises = activeObjects.map(s => fetchItemData(s));
     
     const results = await Promise.all(fetchPromises);
     loader.classList.add('hidden');
     
     // Render each card
     results.forEach((result, index) => {
-        if (result.error) {
-            renderErrorCard(result.code, result.error);
-        } else if (result.data) {
-            result.data.range = result.range;
-            // Cache retrieved data for offline CSV downloads
-            STATE.dataCache[result.code] = result.data;
-            renderCard(result.data, index);
+        if (result.merged) {
+            // Cache successfully fetched sub-series for offline downloads & sidebar labels
+            result.datasets.forEach(ds => {
+                if (ds.data) {
+                    ds.data.range = result.range;
+                    STATE.dataCache[ds.code] = ds.data;
+                }
+            });
+            renderMergedCard(result, index);
+        } else {
+            if (result.error) {
+                renderErrorCard(result.code, result.error);
+            } else if (result.data) {
+                result.data.range = result.range;
+                // Cache retrieved data for offline CSV downloads
+                STATE.dataCache[result.code] = result.data;
+                renderCard(result.data, index);
+            }
         }
     });
 
     lucide.createIcons();
+    updateMergeFloatingBar();
 }
 
 // Fetch single series data from local proxy server
@@ -412,7 +468,10 @@ function renderCard(series, index) {
         <article class="card-indicator card-${safeId}" id="card-${safeId}" aria-labelledby="title-${safeId}">
             <div class="card-header">
                 <div class="card-title-wrap">
-                    <h3 class="card-title" id="title-${safeId}">${series.name}</h3>
+                    <div class="card-title-flex">
+                        <input type="checkbox" class="card-select-checkbox" data-id="${series.fullCode}" title="בחר למיזוג">
+                        <h3 class="card-title" id="title-${safeId}">${series.name}</h3>
+                    </div>
                 </div>
                 <div class="card-actions">
                     <select class="card-range-select" data-code="${series.fullCode}" title="שנה טווח זמן לגרף זה">
@@ -1000,17 +1059,27 @@ function renderSidebarSeriesList() {
     }
     
     listEl.innerHTML = activeObjects.map((s, index) => {
-        const cached = STATE.dataCache[s.code];
-        const name = cached ? cached.name : s.code;
+        let name, codeLabel, itemKey;
+        if (s.merged) {
+            const successfulNames = s.codes.map(c => STATE.dataCache[c] ? STATE.dataCache[c].name : c);
+            name = s.label || successfulNames.join(' + ');
+            codeLabel = `[ממוזג] ${s.codes.join(', ')}`;
+            itemKey = s.codes.join('_');
+        } else {
+            const cached = STATE.dataCache[s.code];
+            name = cached ? cached.name : s.code;
+            codeLabel = s.code;
+            itemKey = s.code;
+        }
         
         const isFirst = index === 0;
         const isLast = index === activeObjects.length - 1;
         
         return `
-            <li class="sidebar-item" draggable="true" data-code="${s.code}" data-index="${index}">
+            <li class="sidebar-item" draggable="true" data-code="${itemKey}" data-index="${index}">
                 <div class="sidebar-item-info">
                     <div class="sidebar-item-name" title="${name}">${name}</div>
-                    <div class="sidebar-item-code" title="${s.code}">${s.code}</div>
+                    <div class="sidebar-item-code" title="${codeLabel}">${codeLabel}</div>
                 </div>
                 <div class="sidebar-item-actions">
                     <button type="button" class="btn-sidebar-arrow btn-move-up" data-index="${index}" ${isFirst ? 'disabled' : ''} title="הזז למעלה">
@@ -1019,7 +1088,7 @@ function renderSidebarSeriesList() {
                     <button type="button" class="btn-sidebar-arrow btn-move-down" data-index="${index}" ${isLast ? 'disabled' : ''} title="הזז למטה">
                         <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
                     </button>
-                    <button type="button" class="btn-sidebar-delete" data-code="${s.code}" title="הסר מהדשבורד">
+                    <button type="button" class="btn-sidebar-delete" data-code="${itemKey}" title="הסר מהדשבורד">
                         <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
                     </button>
                 </div>
@@ -1103,7 +1172,13 @@ function setupSidebarEvents() {
         const activeObjects = getActiveSeriesObjects();
         
         const newActiveSeries = newOrderCodes.map(code => {
-            return activeObjects.find(s => s.code === code);
+            return activeObjects.find(s => {
+                if (s.merged) {
+                    return s.codes.join('_') === code;
+                } else {
+                    return s.code === code;
+                }
+            });
         }).filter(s => s !== undefined);
         
         STATE.activeSeries = newActiveSeries;
@@ -1121,4 +1196,530 @@ function swapSeries(idxA, idxB) {
     saveStateToLocal();
     refreshDashboard();
     renderSidebarSeriesList();
+}
+
+// Render merged card container
+function renderMergedCard(result, index) {
+    const grid = document.getElementById('dashboard-grid');
+    const id = result.codes.join('_');
+    const safeId = getSafeId(id);
+    
+    const successfulDatasets = result.datasets.filter(d => d.data && !d.error);
+    const title = result.label || successfulDatasets.map(d => d.data.name).join(' + ') || 'גרף ממוזג';
+    
+    const cardHtml = `
+        <article class="card-indicator card-${safeId}" id="card-${safeId}" aria-labelledby="title-${safeId}">
+            <div class="card-header">
+                <div class="card-title-wrap">
+                    <div class="card-title-flex">
+                        <input type="checkbox" class="card-select-checkbox" data-id="${id}" title="בחר למיזוג">
+                        <h3 class="card-title" id="title-${safeId}">${title}</h3>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <select class="card-range-select" data-id="${id}" title="שנה טווח זמן לגרף זה">
+                        <option value="1y" ${result.range === '1y' ? 'selected' : ''}>שנה</option>
+                        <option value="3y" ${result.range === '3y' ? 'selected' : ''}>3 שנים</option>
+                        <option value="5y" ${result.range === '5y' ? 'selected' : ''}>5 שנים</option>
+                        <option value="10y" ${result.range === '10y' ? 'selected' : ''}>10 שנים</option>
+                        <option value="all" ${result.range === 'all' ? 'selected' : ''}>הכל</option>
+                    </select>
+                    <button class="btn-icon-only btn-unmerge" data-id="${id}" title="פצל חזרה לגרפים נפרדים">
+                        <i data-lucide="git-branch" style="transform: rotate(180deg);"></i>
+                    </button>
+                    <button class="btn-icon-only btn-download-merged" data-id="${id}" title="הורד נתונים ממוזגים כ-CSV">
+                        <i data-lucide="download"></i>
+                    </button>
+                    <button class="btn-icon-only btn-remove" data-id="${id}" title="הסר מהדשבורד">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="chart-canvas-${safeId}"></canvas>
+            </div>
+            
+            <div class="card-details">
+                <button class="btn-details-toggle" aria-expanded="false" data-target="details-${safeId}">
+                    <i data-lucide="chevron-down"></i>
+                    <span>פרטים ומטה-דטה (${successfulDatasets.length} סדרות)</span>
+                </button>
+                <div class="details-content" id="details-${safeId}">
+                    <div class="merged-metadata-content">
+                        ${result.datasets.map(ds => {
+                            if (ds.error) {
+                                return `
+                                    <div class="merged-ds-error">
+                                        <strong>${ds.code}</strong>: שגיאה בטעינה (${ds.error})
+                                    </div>
+                                `;
+                            }
+                            const data = ds.data;
+                            return `
+                                <div class="merged-ds-item">
+                                    <h4 class="merged-ds-title">${data.name}</h4>
+                                    <table class="metadata-table">
+                                        <tbody>
+                                            <tr>
+                                                <th>קוד סדרה</th>
+                                                <td><span class="card-code">${data.fullCode}</span></td>
+                                            </tr>
+                                            <tr>
+                                                <th>עולם תוכן (Dataflow)</th>
+                                                <td>${data.dataflow}</td>
+                                            </tr>
+                                            ${Object.entries(data.metadata).map(([key, value]) => `
+                                                <tr>
+                                                    <th>${translateMetadataKey(key)}</th>
+                                                    <td>${value}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `;
+                        }).join('<hr class="metadata-divider">')}
+                    </div>
+                </div>
+            </div>
+        </article>
+    `;
+    
+    grid.insertAdjacentHTML('beforeend', cardHtml);
+    
+    const cardEl = document.getElementById(`card-${safeId}`);
+    
+    // Bind Details Accordion Toggle
+    const toggleBtn = cardEl.querySelector('.btn-details-toggle');
+    const detailsDiv = cardEl.querySelector('.details-content');
+    toggleBtn.addEventListener('click', () => {
+        const expanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+        toggleBtn.setAttribute('aria-expanded', !expanded);
+        toggleBtn.classList.toggle('expanded');
+        detailsDiv.classList.toggle('expanded');
+    });
+    
+    // Bind Unmerge button
+    cardEl.querySelector('.btn-unmerge').addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        unmergeSeries(id);
+    });
+    
+    // Bind Download CSV button
+    cardEl.querySelector('.btn-download-merged').addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        downloadMergedCSV(id);
+    });
+    
+    // Bind Remove button
+    cardEl.querySelector('.btn-remove').addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        removeSeries(id);
+    });
+    
+    // Bind Local Range dropdown
+    const localSelect = cardEl.querySelector('.card-range-select');
+    localSelect.addEventListener('change', async (e) => {
+        const newRange = e.target.value;
+        const id = e.target.getAttribute('data-id');
+        
+        STATE.activeSeries = getActiveSeriesObjects().map(s => {
+            if (s.merged && s.codes.join('_') === id) {
+                return { ...s, range: newRange };
+            }
+            return s;
+        });
+        saveStateToLocal();
+        
+        await refreshSingleMergedCard(id);
+    });
+    
+    // Render Chart.js Graph
+    renderMergedChart(result);
+}
+
+// Render multiple datasets on a single Chart.js canvas
+function renderMergedChart(result) {
+    const id = result.codes.join('_');
+    const safeId = getSafeId(id);
+    const canvasId = `chart-canvas-${safeId}`;
+    const canvasEl = document.getElementById(canvasId);
+    if (!canvasEl) return;
+    const ctx = canvasEl.getContext('2d');
+    
+    const datasets = result.datasets
+        .filter(ds => ds.data && !ds.error)
+        .map((ds, idx) => {
+            const colorScheme = CHART_COLORS[idx % CHART_COLORS.length];
+            const values = ds.data.observations.map(o => o.value);
+            return {
+                label: ds.data.name,
+                data: ds.data.observations.map(o => ({ x: o.date, y: o.value })),
+                borderColor: colorScheme.border,
+                backgroundColor: colorScheme.fill,
+                borderWidth: 2.5,
+                tension: 0.2,
+                pointRadius: values.length > 150 ? 0 : 2.5,
+                pointHoverRadius: 6,
+                pointBackgroundColor: colorScheme.border,
+                pointBorderColor: '#0b0f19',
+                pointBorderWidth: 1.5,
+                fill: true,
+                shadowColor: colorScheme.glow,
+                shadowBlur: 10
+            };
+        });
+    
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        color: '#9ca3af',
+                        font: {
+                            family: 'Outfit, Assistant',
+                            size: 11
+                        },
+                        boxWidth: 12,
+                        boxHeight: 12,
+                        useBorderRadius: true,
+                        borderRadius: 3
+                    },
+                    rtl: true
+                },
+                tooltip: {
+                    backgroundColor: '#121826',
+                    titleColor: '#9ca3af',
+                    bodyColor: '#f3f4f6',
+                    borderColor: 'rgba(255, 255, 255, 0.08)',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    rtl: true,
+                    titleFont: {
+                        family: 'Outfit, Assistant',
+                        size: 11
+                    },
+                    bodyFont: {
+                        family: 'Outfit, Assistant',
+                        size: 13,
+                        weight: 'bold'
+                    },
+                    callbacks: {
+                        label: (context) => {
+                            const label = context.dataset.label || '';
+                            const value = context.raw.y;
+                            let formattedVal = value.toLocaleString();
+                            // Find unit measure from the dataset series metadata if available
+                            const originalDs = result.datasets.find(ds => ds.data && ds.data.name === label);
+                            const unit = (originalDs && originalDs.data.metadata['UNIT_MEASURE']) || '';
+                            return `${label}: ${formattedVal} ${unit}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        parser: 'yyyy-MM-dd',
+                        tooltipFormat: 'dd/MM/yyyy',
+                        displayFormats: {
+                            day: 'dd/MM/yy',
+                            month: 'MM/yyyy',
+                            quarter: 'QQ/yyyy',
+                            year: 'yyyy'
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.03)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#9ca3af',
+                        font: {
+                            family: 'Outfit, Assistant',
+                            size: 10
+                        }
+                    }
+                },
+                y: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.04)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#9ca3af',
+                        font: {
+                            family: 'Outfit, Assistant',
+                            size: 10
+                        },
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    STATE.charts[id] = chart;
+}
+
+// Refresh only a single merged card on date selector changes
+async function refreshSingleMergedCard(id) {
+    const safeId = getSafeId(id);
+    const cardEl = document.getElementById(`card-${safeId}`);
+    if (!cardEl) return;
+    
+    cardEl.classList.add('loading');
+    
+    const seriesObj = getActiveSeriesObjects().find(s => s.merged && s.codes.join('_') === id);
+    if (!seriesObj) return;
+    
+    try {
+        const result = await fetchItemData(seriesObj);
+        
+        // Destroy old chart
+        if (STATE.charts[id]) {
+            STATE.charts[id].destroy();
+        }
+        
+        // Update details accordion table if needed
+        const detailsContainer = cardEl.querySelector('.merged-metadata-content');
+        if (detailsContainer) {
+            const successfulDatasets = result.datasets.filter(d => d.data && !d.error);
+            detailsContainer.innerHTML = result.datasets.map(ds => {
+                if (ds.error) {
+                    return `
+                        <div class="merged-ds-error">
+                            <strong>${ds.code}</strong>: שגיאה בטעינה (${ds.error})
+                        </div>
+                    `;
+                }
+                const data = ds.data;
+                return `
+                    <div class="merged-ds-item">
+                        <h4 class="merged-ds-title">${data.name}</h4>
+                        <table class="metadata-table">
+                            <tbody>
+                                <tr>
+                                    <th>קוד סדרה</th>
+                                    <td><span class="card-code">${data.fullCode}</span></td>
+                                </tr>
+                                <tr>
+                                    <th>עולם תוכן (Dataflow)</th>
+                                    <td>${data.dataflow}</td>
+                                </tr>
+                                ${Object.entries(data.metadata).map(([key, value]) => `
+                                    <tr>
+                                        <th>${translateMetadataKey(key)}</th>
+                                        <td>${value}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('<hr class="metadata-divider">');
+            
+            const detailsToggleText = cardEl.querySelector('.btn-details-toggle span');
+            if (detailsToggleText) {
+                detailsToggleText.textContent = `פרטים ומטה-דטה (${successfulDatasets.length} סדרות)`;
+            }
+        }
+        
+        renderMergedChart(result);
+        
+    } catch (err) {
+        console.error(`Failed to refresh merged card ${id}:`, err.message);
+    } finally {
+        cardEl.classList.remove('loading');
+    }
+}
+
+// Download merged chart data as multi-column aligned CSV
+function downloadMergedCSV(id) {
+    const seriesObj = getActiveSeriesObjects().find(s => s.merged && s.codes.join('_') === id);
+    if (!seriesObj) return;
+    
+    // Find all successful datasets in state data cache
+    const datasets = seriesObj.codes
+        .map(code => STATE.dataCache[code])
+        .filter(data => data && data.observations && data.observations.length > 0);
+        
+    if (datasets.length === 0) {
+        alert("אין נתונים זמינים להורדה.");
+        return;
+    }
+    
+    // Step 1: Collect all unique dates
+    const allDatesSet = new Set();
+    datasets.forEach(ds => {
+        ds.observations.forEach(obs => {
+            if (obs.date) allDatesSet.add(obs.date);
+        });
+    });
+    
+    const sortedDates = Array.from(allDatesSet).sort((a, b) => new Date(a) - new Date(b));
+    
+    // Step 2: Build maps of date -> value for each series
+    const maps = datasets.map(ds => {
+        const map = {};
+        ds.observations.forEach(obs => {
+            map[obs.date] = obs.value;
+        });
+        return { name: ds.name, map };
+    });
+    
+    // Step 3: Build CSV
+    let csvContent = "\uFEFF"; // Excel BOM
+    
+    // Headers: Date, Series 1 Name, Series 2 Name, ...
+    const headers = [`"תאריך"`, ...maps.map(m => `"${m.name.replace(/"/g, '""')}"`)];
+    csvContent += headers.join(",") + "\n";
+    
+    // Rows
+    sortedDates.forEach(date => {
+        const row = [date];
+        maps.forEach(m => {
+            const val = m.map[date];
+            row.push(val !== undefined && val !== null ? val : "");
+        });
+        csvContent += row.join(",") + "\n";
+    });
+    
+    // Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    
+    const safeName = "ממוזג_" + new Date().toISOString().split('T')[0];
+    link.setAttribute("download", `${safeName}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Split a merged series back into single series
+function unmergeSeries(id) {
+    const activeObjects = getActiveSeriesObjects();
+    const itemIndex = activeObjects.findIndex(s => s.merged && s.codes.join('_') === id);
+    if (itemIndex === -1) return;
+    
+    const item = activeObjects[itemIndex];
+    // Create single items for each code
+    const newSingles = item.codes.map(code => ({ code, range: item.range }));
+    
+    // Replace the merged item with individual single items
+    activeObjects.splice(itemIndex, 1, ...newSingles);
+    STATE.activeSeries = activeObjects;
+    
+    saveStateToLocal();
+    refreshDashboard();
+    
+    // Refresh sidebar list if it's rendered/open
+    renderSidebarSeriesList();
+}
+
+// Combine all checked charts on the dashboard
+function mergeSelectedCharts() {
+    const checkedCheckboxes = document.querySelectorAll('.card-select-checkbox:checked');
+    if (checkedCheckboxes.length < 2) return;
+    
+    const idsToMerge = Array.from(checkedCheckboxes).map(cb => cb.getAttribute('data-id'));
+    const activeObjects = getActiveSeriesObjects();
+    const itemsToMerge = [];
+    let firstIndex = -1;
+    
+    activeObjects.forEach((s, index) => {
+        const id = s.merged ? s.codes.join('_') : s.code;
+        if (idsToMerge.includes(id)) {
+            itemsToMerge.push(s);
+            if (firstIndex === -1) {
+                firstIndex = index;
+            }
+        }
+    });
+    
+    if (itemsToMerge.length < 2) return;
+    
+    // Flatten and gather all codes
+    const combinedCodes = [];
+    itemsToMerge.forEach(item => {
+        if (item.merged) {
+            item.codes.forEach(c => {
+                if (!combinedCodes.includes(c)) combinedCodes.push(c);
+            });
+        } else {
+            if (!combinedCodes.includes(item.code)) combinedCodes.push(item.code);
+        }
+    });
+    
+    // Create the new merged item
+    const newMergedItem = {
+        codes: combinedCodes,
+        range: itemsToMerge[0].range || '5y',
+        merged: true
+    };
+    
+    // Replace selected cards in activeSeries with the new merged card
+    const newActiveSeries = [];
+    activeObjects.forEach((s, index) => {
+        const id = s.merged ? s.codes.join('_') : s.code;
+        if (idsToMerge.includes(id)) {
+            if (index === firstIndex) {
+                newActiveSeries.push(newMergedItem);
+            }
+        } else {
+            newActiveSeries.push(s);
+        }
+    });
+    
+    STATE.activeSeries = newActiveSeries;
+    saveStateToLocal();
+    refreshDashboard();
+}
+
+// Manage floating bar visibility and text
+function updateMergeFloatingBar() {
+    const checked = document.querySelectorAll('.card-select-checkbox:checked');
+    const bar = document.getElementById('merge-floating-bar');
+    const text = document.getElementById('merge-bar-text');
+    const mergeBtn = document.getElementById('btn-merge-action');
+    
+    if (!bar || !text || !mergeBtn) return;
+    
+    if (checked.length > 0) {
+        text.textContent = `נבחרו ${checked.length} גרפים למיזוג`;
+        bar.classList.add('active');
+        bar.classList.remove('hidden');
+        
+        if (checked.length >= 2) {
+            mergeBtn.disabled = false;
+            mergeBtn.style.opacity = '1';
+        } else {
+            mergeBtn.disabled = true;
+            mergeBtn.style.opacity = '0.5';
+        }
+    } else {
+        bar.classList.remove('active');
+        setTimeout(() => {
+            if (!bar.classList.contains('active')) {
+                bar.classList.add('hidden');
+            }
+        }, 300);
+    }
 }

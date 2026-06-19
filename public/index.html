@@ -210,6 +210,22 @@
     </aside>
     <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
 
+    <!-- Floating Merge Action Bar -->
+    <div id="merge-floating-bar" class="merge-floating-bar hidden">
+        <div class="merge-bar-content">
+            <span id="merge-bar-text">נבחרו 0 גרפים למיזוג</span>
+            <div class="merge-bar-actions">
+                <button class="btn btn-accent" id="btn-merge-action" disabled style="opacity: 0.5;">
+                    <i data-lucide="layers"></i>
+                    <span>מזג לגרף אחד</span>
+                </button>
+                <button class="btn btn-secondary" id="btn-merge-cancel">
+                    <span>בטל</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Initialize lucide icons on load
         document.addEventListener('DOMContentLoaded', () => {

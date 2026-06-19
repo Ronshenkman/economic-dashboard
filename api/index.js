@@ -138,11 +138,18 @@ async function loadSeriesFromKV() {
                 const text = await res.text();
                 const decoded = decodeKvValue(text);
                 if (!decoded) return null;
-                const colonIdx = decoded.indexOf(':');
-                if (colonIdx === -1) return null;
-                const code = decoded.substring(0, colonIdx);
-                const range = decoded.substring(colonIdx + 1);
-                return { code, range };
+                
+                try {
+                    // Try parsing as JSON first (new format supporting merged configurations)
+                    return JSON.parse(decoded);
+                } catch (e) {
+                    // Fallback for old format (code:range)
+                    const colonIdx = decoded.indexOf(':');
+                    if (colonIdx === -1) return null;
+                    const code = decoded.substring(0, colonIdx);
+                    const range = decoded.substring(colonIdx + 1);
+                    return { code, range };
+                }
             }).catch(() => null);
         });
         
@@ -169,18 +176,18 @@ async function saveSeriestoKV(seriesList) {
         
         // Save each series in parallel
         const savePromises = seriesList.map((s, i) => {
-            const value = `${s.code}:${s.range}`;
+            const value = JSON.stringify(s);
             const valueHex = Buffer.from(value, 'utf8').toString('hex');
             const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/s${i}/${valueHex}`;
             return kvFetch(url, { method: 'POST', timeout: 8000 }).then(async res => {
                 if (!res.ok) {
                     const t = await res.text();
-                    console.error(`Failed to save series ${i} (${s.code}):`, res.status, t.substring(0, 100));
+                    console.error(`Failed to save series ${i} (${s.code || s.codes.join(',')}):`, res.status, t.substring(0, 100));
                     return false;
                 }
                 return true;
             }).catch(err => {
-                console.error(`Error saving series ${i} (${s.code}):`, err.message);
+                console.error(`Error saving series ${i} (${s.code || s.codes.join(',')}):`, err.message);
                 return false;
             });
         });

@@ -1042,4 +1042,130 @@ select:focus, input:focus {
     justify-content: stretch;
 }
 
+/* Card Selection & Merging Styles */
+.card-title-flex {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+/* Custom Checkbox on Cards */
+.card-select-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--text-muted);
+    border-radius: 50%;
+    outline: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: var(--transition-fast);
+    background: rgba(255, 255, 255, 0.02);
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.card-select-checkbox:hover {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+    background: rgba(6, 182, 212, 0.05);
+}
+
+.card-select-checkbox:checked {
+    border-color: var(--accent-cyan);
+    background: var(--accent-cyan);
+}
+
+.card-select-checkbox:checked::after {
+    content: '';
+    width: 8px;
+    height: 4px;
+    border-left: 2px solid var(--bg-primary);
+    border-bottom: 2px solid var(--bg-primary);
+    transform: rotate(-45deg);
+    position: absolute;
+    top: 5px;
+}
+
+/* Floating Action Bar */
+.merge-floating-bar {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translate(-50%, 100px);
+    z-index: 1000;
+    width: 90%;
+    max-width: 500px;
+    background: rgba(18, 24, 38, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    padding: 1rem 1.5rem;
+    transition: transform var(--transition-normal), opacity var(--transition-normal);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.merge-floating-bar.active {
+    transform: translate(-50%, 0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.merge-bar-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+#merge-bar-text {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.merge-bar-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Unmerge / Split Button Hover */
+.btn-icon-only.btn-unmerge:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #c084fc;
+}
+
+/* Merged Metadata Styles */
+.merged-ds-item {
+    padding: 0.75rem 0;
+}
+
+.merged-ds-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    margin-bottom: 0.5rem;
+}
+
+.metadata-divider {
+    border: 0;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.05);
+    margin: 0.5rem 0;
+}
+
+.merged-ds-error {
+    color: var(--danger);
+    font-size: 0.85rem;
+    padding: 0.5rem 0;
+}
+
 

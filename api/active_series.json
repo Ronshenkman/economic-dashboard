@@ -4,7 +4,15 @@
     "range": "5y"
   },
   {
+    "code": "IR_OPR",
+    "range": "3y"
+  },
+  {
     "code": "DWH_SRC_0463_MA",
     "range": "1y"
+  },
+  {
+    "code": "CLS11_S3_EX_C_MEDIUM_LOW_M_TREND",
+    "range": "2y"
   }
 ]
