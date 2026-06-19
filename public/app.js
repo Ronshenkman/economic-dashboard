@@ -1211,9 +1211,12 @@ function renderMergedCard(result, index) {
         <article class="card-indicator card-${safeId}" id="card-${safeId}" aria-labelledby="title-${safeId}">
             <div class="card-header">
                 <div class="card-title-wrap">
-                    <div class="card-title-flex">
+                    <div class="card-title-flex" style="align-items: center;">
                         <input type="checkbox" class="card-select-checkbox" data-id="${id}" title="בחר למיזוג">
                         <h3 class="card-title" id="title-${safeId}">${title}</h3>
+                        <button class="btn-icon-only-mini btn-edit-title" data-id="${id}" title="ערוך כותרת">
+                            <i data-lucide="edit-2" style="width: 12px; height: 12px;"></i>
+                        </button>
                     </div>
                 </div>
                 <div class="card-actions">
@@ -1298,6 +1301,12 @@ function renderMergedCard(result, index) {
         toggleBtn.setAttribute('aria-expanded', !expanded);
         toggleBtn.classList.toggle('expanded');
         detailsDiv.classList.toggle('expanded');
+    });
+    
+    // Bind Edit Title button
+    cardEl.querySelector('.btn-edit-title').addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        startEditingTitle(id);
     });
     
     // Bind Unmerge button
@@ -1722,4 +1731,73 @@ function updateMergeFloatingBar() {
             }
         }, 300);
     }
+}
+
+// Start title edit mode inline
+function startEditingTitle(id) {
+    const safeId = getSafeId(id);
+    const cardEl = document.getElementById(`card-${safeId}`);
+    if (!cardEl) return;
+    
+    const titleWrap = cardEl.querySelector('.card-title-wrap');
+    const titleFlex = titleWrap.querySelector('.card-title-flex');
+    const currentTitle = titleWrap.querySelector('.card-title').textContent;
+    
+    // Hide original title flex
+    titleFlex.classList.add('hidden');
+    
+    // Check if edit form already exists
+    let editForm = titleWrap.querySelector('.card-title-edit-form');
+    if (editForm) {
+        editForm.remove();
+    }
+    
+    const formHtml = `
+        <form class="card-title-edit-form" style="display: flex; align-items: center; gap: 0.5rem; width: 100%;">
+            <input type="text" class="card-title-input" value="${currentTitle.replace(/"/g, '&quot;')}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border); color: var(--text-primary); padding: 0.25rem 0.5rem; border-radius: var(--border-radius-sm); font-size: 1rem; flex: 1; min-width: 100px;" required>
+            <button type="submit" class="btn-icon-only-mini btn-save-title" title="שמור כותרת">
+                <i data-lucide="check" style="width: 12px; height: 12px; color: var(--success);"></i>
+            </button>
+            <button type="button" class="btn-icon-only-mini btn-cancel-title" title="בטל">
+                <i data-lucide="x" style="width: 12px; height: 12px; color: var(--danger);"></i>
+            </button>
+        </form>
+    `;
+    
+    titleWrap.insertAdjacentHTML('beforeend', formHtml);
+    lucide.createIcons();
+    
+    const input = titleWrap.querySelector('.card-title-input');
+    input.focus();
+    input.select();
+    
+    const form = titleWrap.querySelector('.card-title-edit-form');
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const newTitle = input.value.trim();
+        if (newTitle) {
+            saveEditedTitle(id, newTitle);
+        }
+    });
+    
+    const cancelBtn = form.querySelector('.btn-cancel-title');
+    cancelBtn.addEventListener('click', () => {
+        form.remove();
+        titleFlex.classList.remove('hidden');
+    });
+}
+
+// Save edited title to activeSeries state
+function saveEditedTitle(id, newTitle) {
+    STATE.activeSeries = getActiveSeriesObjects().map(s => {
+        if (s.merged && s.codes.join('_') === id) {
+            return { ...s, label: newTitle };
+        }
+        return s;
+    });
+    saveStateToLocal();
+    refreshDashboard();
+    
+    // Update sidebar if it is open
+    renderSidebarSeriesList();
 }
