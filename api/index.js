@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { MongoClient } = require('mongodb');
 
 // A robust custom fetch function using Node's built-in https module
 // Compatible with all Node.js versions and environments (including serverless)
@@ -93,6 +94,60 @@ try {
     }
 } catch (err) {
     console.error('Failed to load cache file:', err.message);
+}
+
+let mongoClient = null;
+let db = null;
+const MONGODB_URI = process.env.MONGODB_URI;
+
+async function connectToMongoDB() {
+    if (!MONGODB_URI) {
+        console.log("MONGODB_URI environment variable not found. Using keyvalue.immanuel.co KV store as fallback database.");
+        return null;
+    }
+    try {
+        console.log("Connecting to MongoDB...");
+        mongoClient = new MongoClient(MONGODB_URI);
+        await mongoClient.connect();
+        db = mongoClient.db('economic_dashboard');
+        console.log("Connected to MongoDB successfully!");
+        return db;
+    } catch (err) {
+        console.error("Failed to connect to MongoDB:", err.message);
+        db = null;
+        mongoClient = null;
+        return null;
+    }
+}
+
+// Load active series from MongoDB
+async function loadSeriesFromMongoDB() {
+    if (!db) return null;
+    try {
+        const collection = db.collection('settings');
+        const doc = await collection.findOne({ _id: 'active_series' });
+        return doc ? doc.list : [];
+    } catch (err) {
+        console.error("Failed to load series from MongoDB:", err.message);
+        return null;
+    }
+}
+
+// Save active series to MongoDB
+async function saveSeriesToMongoDB(seriesList) {
+    if (!db) return false;
+    try {
+        const collection = db.collection('settings');
+        await collection.updateOne(
+            { _id: 'active_series' },
+            { $set: { list: seriesList, updatedAt: new Date() } },
+            { upsert: true }
+        );
+        return true;
+    } catch (err) {
+        console.error("Failed to save series to MongoDB:", err.message);
+        return false;
+    }
 }
 
 app.use(express.json());
@@ -206,8 +261,21 @@ async function saveSeriestoKV(seriesList) {
 
 // Initialize active series on startup
 async function initActiveSeries() {
+    await connectToMongoDB();
+    
+    let loadedSeries = null;
+    if (db) {
+        loadedSeries = await loadSeriesFromMongoDB();
+        if (loadedSeries !== null) {
+            activeSeries = loadedSeries;
+            console.log("Loaded active series from MongoDB:", activeSeries);
+            return;
+        }
+    }
+    
+    // Fallback to KV store
     const kvSeries = await loadSeriesFromKV();
-    if (kvSeries !== null && kvSeries.length >= 0) {
+    if (kvSeries !== null) {
         activeSeries = kvSeries;
         console.log("Loaded active series from KV store:", activeSeries);
     } else {
@@ -604,12 +672,21 @@ app.get('/api/series-search', async (req, res) => {
 app.get('/api/active-series', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     
-    // Always fetch fresh from KV store
-    const kvSeries = await loadSeriesFromKV();
-    if (kvSeries !== null) {
-        activeSeries = kvSeries;
+    let loadedSeries = null;
+    if (db) {
+        loadedSeries = await loadSeriesFromMongoDB();
+        if (loadedSeries !== null) {
+            activeSeries = loadedSeries;
+        }
     }
-    // else: use in-memory cached value
+    
+    if (loadedSeries === null) {
+        // Fallback to KV store
+        const kvSeries = await loadSeriesFromKV();
+        if (kvSeries !== null) {
+            activeSeries = kvSeries;
+        }
+    }
     
     res.json(activeSeries);
 });
@@ -628,18 +705,30 @@ app.post('/api/active-series', async (req, res) => {
     
     activeSeries = list;
     
-    // Save to KV store using multi-key approach
-    const kvSaved = await saveSeriestoKV(activeSeries);
+    let saved = false;
+    if (db) {
+        saved = await saveSeriesToMongoDB(activeSeries);
+        if (saved) {
+            console.log("Successfully saved", activeSeries.length, "series to MongoDB");
+        }
+    }
     
-    if (kvSaved) {
-        console.log("Successfully saved", activeSeries.length, "series to KV store");
+    // Always write to KV store as a fallback/mirror if MongoDB is not present, or if it failed
+    if (!saved) {
+        const kvSaved = await saveSeriestoKV(activeSeries);
+        if (kvSaved) {
+            console.log("Successfully saved", activeSeries.length, "series to KV store");
+            saved = true;
+        }
+    }
+    
+    if (saved) {
         res.json({ success: true, count: activeSeries.length });
     } else {
-        console.error("Failed to save series to KV store");
-        // Still return success if we have in-memory state (best effort)
+        console.error("Failed to save series to any persistent database");
         res.status(500).json({ 
             success: false, 
-            error: 'Failed to persist to KV store. Changes are in-memory only until next save.' 
+            error: 'Failed to persist to database. Changes are in-memory only.' 
         });
     }
 });
