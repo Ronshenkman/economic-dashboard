@@ -4,67 +4,6 @@ const path = require('path');
 const https = require('https');
 const { MongoClient } = require('mongodb');
 
-// A robust custom fetch function using Node's built-in https module
-// Compatible with all Node.js versions and environments (including serverless)
-function kvFetch(url, options = {}) {
-    return new Promise((resolve, reject) => {
-        try {
-            const urlObj = new URL(url);
-            const reqOptions = {
-                hostname: urlObj.hostname,
-                path: urlObj.pathname + urlObj.search,
-                method: options.method || 'GET',
-                headers: options.headers || {}
-            };
-            
-            // Set standard headers for proxy compatibility
-            if (!reqOptions.headers['User-Agent']) {
-                reqOptions.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-            }
-            
-            if (reqOptions.method === 'POST' || reqOptions.method === 'PUT') {
-                if (options.body) {
-                    reqOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
-                } else {
-                    reqOptions.headers['Content-Length'] = '0';
-                }
-            }
-            
-            const timeout = options.timeout || 8000;
-            
-            const req = https.request(reqOptions, (res) => {
-                let data = '';
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
-                res.on('end', () => {
-                    resolve({
-                        ok: res.statusCode >= 200 && res.statusCode < 300,
-                        status: res.statusCode,
-                        text: () => Promise.resolve(data)
-                    });
-                });
-            });
-            
-            req.on('error', (err) => {
-                reject(err);
-            });
-            
-            req.setTimeout(timeout, () => {
-                req.destroy();
-                reject(new Error('Request timeout'));
-            });
-            
-            if (options.body) {
-                req.write(options.body);
-            }
-            req.end();
-        } catch (err) {
-            reject(err);
-        }
-    });
-}
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -102,7 +41,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 async function connectToMongoDB() {
     if (!MONGODB_URI) {
-        console.log("MONGODB_URI environment variable not found. Using keyvalue.immanuel.co KV store as fallback database.");
+        console.warn("WARNING: MONGODB_URI environment variable is not defined. Active series will not persist.");
         return null;
     }
     try {
@@ -154,118 +93,14 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Global active series state
-// Uses multi-key approach on keyvalue.immanuel.co to avoid URL length limits:
-//   Key "n" -> count of series (hex encoded number string)
-//   Key "sN" -> "CODE:RANGE" for series index N (hex encoded)
-const KV_APP_KEY = "econ_dash_ronshenkman_v6"; // Unique app key
-
 let activeSeries = [];
-
-// Helper: decode a raw KV response string (strips quotes, decodes hex)
-function decodeKvValue(rawText) {
-    let text = rawText.trim();
-    if (text.startsWith('"') && text.endsWith('"')) {
-        text = text.slice(1, -1);
-    }
-    if (!text) return null;
-    return Buffer.from(text, 'hex').toString('utf8');
-}
-
-// Load all active series from multi-key KV store
-async function loadSeriesFromKV() {
-    try {
-        // Step 1: Get count
-        const countUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/n`;
-        const countRes = await kvFetch(countUrl, { timeout: 8000 });
-        if (!countRes.ok) return null;
-        const countText = await countRes.text();
-        const countDecoded = decodeKvValue(countText);
-        if (!countDecoded) return [];
-        const count = parseInt(countDecoded);
-        if (isNaN(count) || count < 0) return [];
-        if (count === 0) return [];
-        
-        // Step 2: Load all series in parallel
-        const promises = Array.from({ length: count }, (_, i) => {
-            const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${KV_APP_KEY}/s${i}`;
-            return kvFetch(url, { timeout: 8000 }).then(async res => {
-                if (!res.ok) return null;
-                const text = await res.text();
-                const decoded = decodeKvValue(text);
-                if (!decoded) return null;
-                
-                try {
-                    // Try parsing as JSON first (new format supporting merged configurations)
-                    return JSON.parse(decoded);
-                } catch (e) {
-                    // Fallback for old format (code:range)
-                    const colonIdx = decoded.indexOf(':');
-                    if (colonIdx === -1) return null;
-                    const code = decoded.substring(0, colonIdx);
-                    const range = decoded.substring(colonIdx + 1);
-                    return { code, range };
-                }
-            }).catch(() => null);
-        });
-        
-        const results = await Promise.all(promises);
-        return results.filter(Boolean);
-    } catch (err) {
-        console.error("Failed to load series from KV store:", err.message);
-        return null;
-    }
-}
-
-// Save all active series to multi-key KV store
-async function saveSeriestoKV(seriesList) {
-    try {
-        // Save count first
-        const countHex = Buffer.from(String(seriesList.length), 'utf8').toString('hex');
-        const countUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/n/${countHex}`;
-        const countRes = await kvFetch(countUrl, { method: 'POST', timeout: 8000 });
-        if (!countRes.ok) {
-            const t = await countRes.text();
-            console.error('Failed to save count to KV:', countRes.status, t.substring(0, 100));
-            return false;
-        }
-        
-        // Save each series in parallel
-        const savePromises = seriesList.map((s, i) => {
-            const value = JSON.stringify(s);
-            const valueHex = Buffer.from(value, 'utf8').toString('hex');
-            const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${KV_APP_KEY}/s${i}/${valueHex}`;
-            return kvFetch(url, { method: 'POST', timeout: 8000 }).then(async res => {
-                if (!res.ok) {
-                    const t = await res.text();
-                    console.error(`Failed to save series ${i} (${s.code || s.codes.join(',')}):`, res.status, t.substring(0, 100));
-                    return false;
-                }
-                return true;
-            }).catch(err => {
-                console.error(`Error saving series ${i} (${s.code || s.codes.join(',')}):`, err.message);
-                return false;
-            });
-        });
-        
-        const results = await Promise.all(savePromises);
-        const allOk = results.every(Boolean);
-        if (!allOk) {
-            console.error('Some series failed to save to KV store');
-        }
-        return allOk;
-    } catch (err) {
-        console.error("Failed to save series to KV store:", err.message);
-        return false;
-    }
-}
 
 // Initialize active series on startup
 async function initActiveSeries() {
     await connectToMongoDB();
     
-    let loadedSeries = null;
     if (db) {
-        loadedSeries = await loadSeriesFromMongoDB();
+        const loadedSeries = await loadSeriesFromMongoDB();
         if (loadedSeries !== null) {
             activeSeries = loadedSeries;
             console.log("Loaded active series from MongoDB:", activeSeries);
@@ -273,15 +108,8 @@ async function initActiveSeries() {
         }
     }
     
-    // Fallback to KV store
-    const kvSeries = await loadSeriesFromKV();
-    if (kvSeries !== null) {
-        activeSeries = kvSeries;
-        console.log("Loaded active series from KV store:", activeSeries);
-    } else {
-        activeSeries = [];
-        console.log("Starting with empty active series list.");
-    }
+    activeSeries = [];
+    console.log("Starting with empty active series list (MongoDB connection pending/failed).");
 }
 
 // Call init on startup
@@ -672,23 +500,17 @@ app.get('/api/series-search', async (req, res) => {
 app.get('/api/active-series', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     
-    let loadedSeries = null;
-    if (db) {
-        loadedSeries = await loadSeriesFromMongoDB();
-        if (loadedSeries !== null) {
-            activeSeries = loadedSeries;
-        }
+    if (!db) {
+        return res.status(500).json({ error: 'Database connection not established. Please define MONGODB_URI.' });
     }
     
-    if (loadedSeries === null) {
-        // Fallback to KV store
-        const kvSeries = await loadSeriesFromKV();
-        if (kvSeries !== null) {
-            activeSeries = kvSeries;
-        }
+    const loadedSeries = await loadSeriesFromMongoDB();
+    if (loadedSeries !== null) {
+        activeSeries = loadedSeries;
+        res.json(activeSeries);
+    } else {
+        res.status(500).json({ error: 'Failed to retrieve active series from database' });
     }
-    
-    res.json(activeSeries);
 });
 
 // Endpoint to update active series
@@ -703,32 +525,24 @@ app.post('/api/active-series', async (req, res) => {
         });
     }
     
+    if (!db) {
+        return res.status(500).json({ 
+            success: false, 
+            error: 'Database connection not established. Please define MONGODB_URI.' 
+        });
+    }
+    
     activeSeries = list;
     
-    let saved = false;
-    if (db) {
-        saved = await saveSeriesToMongoDB(activeSeries);
-        if (saved) {
-            console.log("Successfully saved", activeSeries.length, "series to MongoDB");
-        }
-    }
-    
-    // Always write to KV store as a fallback/mirror if MongoDB is not present, or if it failed
-    if (!saved) {
-        const kvSaved = await saveSeriestoKV(activeSeries);
-        if (kvSaved) {
-            console.log("Successfully saved", activeSeries.length, "series to KV store");
-            saved = true;
-        }
-    }
-    
+    const saved = await saveSeriesToMongoDB(activeSeries);
     if (saved) {
+        console.log("Successfully saved", activeSeries.length, "series to MongoDB");
         res.json({ success: true, count: activeSeries.length });
     } else {
-        console.error("Failed to save series to any persistent database");
+        console.error("Failed to save series to MongoDB");
         res.status(500).json({ 
             success: false, 
-            error: 'Failed to persist to database. Changes are in-memory only.' 
+            error: 'Failed to persist to database.' 
         });
     }
 });
