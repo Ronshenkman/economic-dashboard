@@ -1061,7 +1061,12 @@ function renderSidebarSeriesList() {
     listEl.innerHTML = activeObjects.map((s, index) => {
         let name, codeLabel, itemKey;
         if (s.merged) {
-            const successfulNames = s.codes.map(c => STATE.dataCache[c] ? STATE.dataCache[c].name : c);
+            const successfulNames = s.codes.map(c => {
+                if (s.customLabels && s.customLabels[c]) {
+                    return s.customLabels[c];
+                }
+                return STATE.dataCache[c] ? STATE.dataCache[c].name : c;
+            });
             name = s.label || successfulNames.join(' + ');
             codeLabel = `[ממוזג] ${s.codes.join(', ')}`;
             itemKey = s.codes.join('_');
@@ -1205,7 +1210,7 @@ function renderMergedCard(result, index) {
     const safeId = getSafeId(id);
     
     const successfulDatasets = result.datasets.filter(d => d.data && !d.error);
-    const title = result.label || successfulDatasets.map(d => d.data.name).join(' + ') || 'גרף ממוזג';
+    const title = result.label || successfulDatasets.map(d => (result.customLabels && result.customLabels[d.code]) || d.data.name).join(' + ') || 'גרף ממוזג';
     
     const cardHtml = `
         <article class="card-indicator card-${safeId}" id="card-${safeId}" aria-labelledby="title-${safeId}">
@@ -1259,9 +1264,18 @@ function renderMergedCard(result, index) {
                                 `;
                             }
                             const data = ds.data;
+                            const customLabel = (result.customLabels && result.customLabels[data.fullCode]) || '';
+                            const displayName = customLabel || data.name;
                             return `
-                                <div class="merged-ds-item">
-                                    <h4 class="merged-ds-title">${data.name}</h4>
+                                <div class="merged-ds-item" data-code="${data.fullCode}">
+                                    <div class="merged-ds-title-wrap">
+                                        <div class="merged-ds-title-flex">
+                                            <h4 class="merged-ds-title">${displayName}</h4>
+                                            <button class="btn-icon-only-mini btn-edit-series-label" data-card-id="${id}" data-code="${data.fullCode}" title="ערוך שם בlegend">
+                                                <i data-lucide="edit-2" style="width: 12px; height: 12px;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
                                     <table class="metadata-table">
                                         <tbody>
                                             <tr>
@@ -1326,6 +1340,15 @@ function renderMergedCard(result, index) {
         const id = e.currentTarget.getAttribute('data-id');
         removeSeries(id);
     });
+
+    // Bind Edit Series Label buttons
+    cardEl.querySelectorAll('.btn-edit-series-label').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const cId = e.currentTarget.getAttribute('data-card-id');
+            const code = e.currentTarget.getAttribute('data-code');
+            startEditingSeriesLabel(cId, code);
+        });
+    });
     
     // Bind Local Range dropdown
     const localSelect = cardEl.querySelector('.card-range-select');
@@ -1362,8 +1385,9 @@ function renderMergedChart(result) {
         .map((ds, idx) => {
             const colorScheme = CHART_COLORS[idx % CHART_COLORS.length];
             const values = ds.data.observations.map(o => o.value);
+            const customLabel = (result.customLabels && result.customLabels[ds.code]) || ds.data.name;
             return {
-                label: ds.data.name,
+                label: customLabel,
                 data: ds.data.observations.map(o => ({ x: o.date, y: o.value })),
                 borderColor: colorScheme.border,
                 backgroundColor: colorScheme.fill,
@@ -1429,7 +1453,11 @@ function renderMergedChart(result) {
                             const value = context.raw.y;
                             let formattedVal = value.toLocaleString();
                             // Find unit measure from the dataset series metadata if available
-                            const originalDs = result.datasets.find(ds => ds.data && ds.data.name === label);
+                            const originalDs = result.datasets.find(ds => {
+                                if (!ds.data) return false;
+                                const dsLabel = (result.customLabels && result.customLabels[ds.code]) || ds.data.name;
+                                return dsLabel === label;
+                            });
                             const unit = (originalDs && originalDs.data.metadata['UNIT_MEASURE']) || '';
                             return `${label}: ${formattedVal} ${unit}`;
                         }
@@ -1516,9 +1544,18 @@ async function refreshSingleMergedCard(id) {
                     `;
                 }
                 const data = ds.data;
+                const customLabel = (result.customLabels && result.customLabels[data.fullCode]) || '';
+                const displayName = customLabel || data.name;
                 return `
-                    <div class="merged-ds-item">
-                        <h4 class="merged-ds-title">${data.name}</h4>
+                    <div class="merged-ds-item" data-code="${data.fullCode}">
+                        <div class="merged-ds-title-wrap">
+                            <div class="merged-ds-title-flex">
+                                <h4 class="merged-ds-title">${displayName}</h4>
+                                <button class="btn-icon-only-mini btn-edit-series-label" data-card-id="${id}" data-code="${data.fullCode}" title="ערוך שם בlegend">
+                                    <i data-lucide="edit-2" style="width: 12px; height: 12px;"></i>
+                                </button>
+                            </div>
+                        </div>
                         <table class="metadata-table">
                             <tbody>
                                 <tr>
@@ -1541,10 +1578,29 @@ async function refreshSingleMergedCard(id) {
                 `;
             }).join('<hr class="metadata-divider">');
             
+            // Bind Edit Series Label buttons
+            detailsContainer.querySelectorAll('.btn-edit-series-label').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const cId = e.currentTarget.getAttribute('data-card-id');
+                    const code = e.currentTarget.getAttribute('data-code');
+                    startEditingSeriesLabel(cId, code);
+                });
+            });
+
+            // Update card header title if there is no custom card-wide label
+            const title = result.label || successfulDatasets.map(d => (result.customLabels && result.customLabels[d.code]) || d.data.name).join(' + ') || 'גרף ממוזג';
+            const titleEl = cardEl.querySelector('.card-title');
+            if (titleEl) {
+                titleEl.textContent = title;
+            }
+            
             const detailsToggleText = cardEl.querySelector('.btn-details-toggle span');
             if (detailsToggleText) {
                 detailsToggleText.textContent = `פרטים ומטה-דטה (${successfulDatasets.length} סדרות)`;
             }
+
+            // Re-render lucide icons inside details content
+            lucide.createIcons();
         }
         
         renderMergedChart(result);
@@ -1678,10 +1734,18 @@ function mergeSelectedCharts() {
     });
     
     // Create the new merged item
+    const customLabels = {};
+    itemsToMerge.forEach(item => {
+        if (item.customLabels) {
+            Object.assign(customLabels, item.customLabels);
+        }
+    });
+    
     const newMergedItem = {
         codes: combinedCodes,
         range: itemsToMerge[0].range || '5y',
-        merged: true
+        merged: true,
+        customLabels: customLabels
     };
     
     // Replace selected cards in activeSeries with the new merged card
@@ -1797,6 +1861,88 @@ function saveEditedTitle(id, newTitle) {
     });
     saveStateToLocal();
     refreshDashboard();
+    
+    // Update sidebar if it is open
+    renderSidebarSeriesList();
+}
+
+// Start editing a series label inside a merged chart
+function startEditingSeriesLabel(cardId, code) {
+    const safeCardId = getSafeId(cardId);
+    const cardEl = document.getElementById(`card-${safeCardId}`);
+    if (!cardEl) return;
+    
+    // Find the merged-ds-item for this series code
+    const dsItem = cardEl.querySelector(`.merged-ds-item[data-code="${code}"]`);
+    if (!dsItem) return;
+    
+    const titleWrap = dsItem.querySelector('.merged-ds-title-wrap');
+    const titleFlex = titleWrap.querySelector('.merged-ds-title-flex');
+    const currentTitle = titleFlex.querySelector('.merged-ds-title').textContent;
+    
+    // Hide titleFlex
+    titleFlex.style.display = 'none';
+    
+    // Check if form already exists
+    let editForm = titleWrap.querySelector('.series-label-edit-form');
+    if (editForm) {
+        editForm.remove();
+    }
+    
+    const formHtml = `
+        <form class="series-label-edit-form" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; width: 100%;">
+            <input type="text" class="series-label-input" value="${currentTitle.replace(/"/g, '&quot;')}" style="background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border); color: var(--text-primary); padding: 0.25rem 0.5rem; border-radius: var(--border-radius-sm); font-size: 0.9rem; flex: 1; min-width: 100px;" required>
+            <button type="submit" class="btn-icon-only-mini btn-save-series-label" title="שמור שם">
+                <i data-lucide="check" style="width: 12px; height: 12px; color: var(--success);"></i>
+            </button>
+            <button type="button" class="btn-icon-only-mini btn-cancel-series-label" title="בטל">
+                <i data-lucide="x" style="width: 12px; height: 12px; color: var(--danger);"></i>
+            </button>
+        </form>
+    `;
+    
+    titleWrap.insertAdjacentHTML('beforeend', formHtml);
+    lucide.createIcons();
+    
+    const input = titleWrap.querySelector('.series-label-input');
+    input.focus();
+    input.select();
+    
+    const form = titleWrap.querySelector('.series-label-edit-form');
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const newLabel = input.value.trim();
+        if (newLabel) {
+            saveEditedSeriesLabel(cardId, code, newLabel);
+        }
+    });
+    
+    const cancelBtn = form.querySelector('.btn-cancel-series-label');
+    cancelBtn.addEventListener('click', () => {
+        form.remove();
+        titleFlex.style.display = 'flex';
+    });
+}
+
+// Save edited series label to activeSeries state
+function saveEditedSeriesLabel(cardId, code, newLabel) {
+    STATE.activeSeries = getActiveSeriesObjects().map(s => {
+        if (s.merged && s.codes.join('_') === cardId) {
+            const customLabels = s.customLabels || {};
+            return {
+                ...s,
+                customLabels: {
+                    ...customLabels,
+                    [code]: newLabel
+                }
+            };
+        }
+        return s;
+    });
+    saveStateToLocal();
+    
+    // Refresh only the affected card to update the legend, tooltip, details view, etc.
+    refreshSingleMergedCard(cardId);
     
     // Update sidebar if it is open
     renderSidebarSeriesList();
