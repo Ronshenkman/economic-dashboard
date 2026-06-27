@@ -169,12 +169,26 @@ function parseCSV(csvText) {
 async function findDataflowForSeries(seriesCode) {
     const firstSegment = seriesCode.split('.')[0];
     
-    // Check cache first
+    // Check local in-memory cache first
     if (cache[firstSegment]) {
         return cache[firstSegment];
     }
     if (cache[seriesCode]) {
         return cache[seriesCode];
+    }
+    
+    // Check MongoDB cache if connected (shared across serverless instances)
+    if (db) {
+        try {
+            const collection = db.collection('dataflow_cache');
+            const cached = await collection.findOne({ _id: firstSegment });
+            if (cached) {
+                cache[firstSegment] = { agencyID: cached.agencyID, dataflowID: cached.dataflowID };
+                return cache[firstSegment];
+            }
+        } catch (err) {
+            console.error("Failed to query dataflow_cache in MongoDB:", err.message);
+        }
     }
     
     console.log(`Cache miss for series code: ${seriesCode}. Starting concurrent lookup...`);
@@ -219,8 +233,24 @@ async function findDataflowForSeries(seriesCode) {
         const results = await Promise.all(promises);
         const hit = results.find(r => r.found);
         if (hit) {
-            // Save to cache
+            // Save to local cache
             cache[firstSegment] = { agencyID: hit.agencyID, dataflowID: hit.dataflowID };
+            
+            // Save to MongoDB cache if connected
+            if (db) {
+                try {
+                    const collection = db.collection('dataflow_cache');
+                    await collection.updateOne(
+                        { _id: firstSegment },
+                        { $set: { agencyID: hit.agencyID, dataflowID: hit.dataflowID, updatedAt: new Date() } },
+                        { upsert: true }
+                    );
+                    console.log(`Saved series ${firstSegment} dataflow mapping to MongoDB cache.`);
+                } catch (err) {
+                    console.error("Failed to save dataflow mapping to MongoDB cache:", err.message);
+                }
+            }
+            
             try {
                 fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
             } catch (err) {
@@ -239,6 +269,8 @@ app.get('/api/series', async (req, res) => {
     if (!code) {
         return res.status(400).json({ error: 'Missing required query parameter: code' });
     }
+    
+    await connectToMongoDB();
     
     try {
         const flowInfo = await findDataflowForSeries(code);
