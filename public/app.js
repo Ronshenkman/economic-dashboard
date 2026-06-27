@@ -463,6 +463,9 @@ function renderCard(series, index) {
     const colorScheme = CHART_COLORS[index % CHART_COLORS.length];
     const safeId = getSafeId(series.fullCode);
     
+    const seriesObj = getActiveSeriesObjects().find(s => s.code === series.fullCode) || {};
+    const isNormalized = !!seriesObj.normalized;
+    
     // Construct HTML template (hiding code in header and putting inside metadata list)
     const cardHtml = `
         <article class="card-indicator card-${safeId}" id="card-${safeId}" aria-labelledby="title-${safeId}">
@@ -474,6 +477,9 @@ function renderCard(series, index) {
                     </div>
                 </div>
                 <div class="card-actions">
+                    <button class="btn-icon-only btn-normalize ${isNormalized ? 'active' : ''}" data-code="${series.fullCode}" title="נרמל בסיס ל-100 בתחילת התקופה">
+                        <i data-lucide="percent"></i>
+                    </button>
                     <select class="card-range-select" data-code="${series.fullCode}" title="שנה טווח זמן לגרף זה">
                         <option value="1y" ${series.range === '1y' ? 'selected' : ''}>שנה</option>
                         <option value="3y" ${series.range === '3y' ? 'selected' : ''}>3 שנים</option>
@@ -537,6 +543,24 @@ function renderCard(series, index) {
         detailsDiv.classList.toggle('expanded');
     });
     
+    // Bind Normalize button
+    cardEl.querySelector('.btn-normalize').addEventListener('click', async (e) => {
+        const code = e.currentTarget.getAttribute('data-code');
+        const btn = e.currentTarget;
+        btn.classList.toggle('active');
+        
+        // Toggle normalized state
+        STATE.activeSeries = getActiveSeriesObjects().map(s => {
+            if (s.code === code) {
+                return { ...s, normalized: !s.normalized };
+            }
+            return s;
+        });
+        saveStateToLocal();
+        
+        await refreshSingleCard(code);
+    });
+    
     // Bind Download CSV button
     cardEl.querySelector('.btn-download').addEventListener('click', (e) => {
         const code = e.currentTarget.getAttribute('data-code');
@@ -577,8 +601,20 @@ function renderChart(series, colorScheme) {
     const canvasId = `chart-canvas-${safeId}`;
     const ctx = document.getElementById(canvasId).getContext('2d');
     
+    // Find normalization state
+    const seriesObj = getActiveSeriesObjects().find(s => s.code === series.fullCode) || {};
+    const isNormalized = !!seriesObj.normalized;
+    
     const dates = series.observations.map(o => o.date);
-    const values = series.observations.map(o => o.value);
+    let values;
+    
+    if (isNormalized) {
+        const firstObs = series.observations.find(o => o.value !== null && o.value !== undefined);
+        const baseValue = (firstObs && firstObs.value !== 0) ? firstObs.value : 1;
+        values = series.observations.map(o => o.value !== null ? (o.value / baseValue) * 100 : null);
+    } else {
+        values = series.observations.map(o => o.value);
+    }
     
     const chart = new Chart(ctx, {
         type: 'line',
@@ -632,8 +668,16 @@ function renderChart(series, colorScheme) {
                         },
                         label: (context) => {
                             const unit = series.metadata['UNIT_MEASURE'] || '';
-                            let formattedVal = context.raw.toLocaleString();
-                            return `${formattedVal} ${unit}`;
+                            if (isNormalized) {
+                                const origVal = series.observations[context.dataIndex]?.value;
+                                const formattedOrig = origVal !== null && origVal !== undefined ? `${origVal.toLocaleString()} ${unit}` : '';
+                                const rawVal = context.raw;
+                                const formattedRaw = typeof rawVal === 'number' ? rawVal.toFixed(1) : rawVal;
+                                return `מדד: ${formattedRaw} (מקור: ${formattedOrig})`;
+                            } else {
+                                let formattedVal = context.raw.toLocaleString();
+                                return `${formattedVal} ${unit}`;
+                            }
                         }
                     }
                 }
@@ -1212,6 +1256,8 @@ function renderMergedCard(result, index) {
     const successfulDatasets = result.datasets.filter(d => d.data && !d.error);
     const title = result.label || successfulDatasets.map(d => (result.customLabels && result.customLabels[d.code]) || d.data.name).join(' + ') || 'גרף ממוזג';
     
+    const isNormalized = !!result.normalized;
+    
     const cardHtml = `
         <article class="card-indicator card-${safeId}" id="card-${safeId}" aria-labelledby="title-${safeId}">
             <div class="card-header">
@@ -1225,6 +1271,9 @@ function renderMergedCard(result, index) {
                     </div>
                 </div>
                 <div class="card-actions">
+                    <button class="btn-icon-only btn-normalize ${isNormalized ? 'active' : ''}" data-id="${id}" title="נרמל בסיס ל-100 בתחילת התקופה">
+                        <i data-lucide="percent"></i>
+                    </button>
                     <select class="card-range-select" data-id="${id}" title="שנה טווח זמן לגרף זה">
                         <option value="1y" ${result.range === '1y' ? 'selected' : ''}>שנה</option>
                         <option value="3y" ${result.range === '3y' ? 'selected' : ''}>3 שנים</option>
@@ -1323,6 +1372,24 @@ function renderMergedCard(result, index) {
         startEditingTitle(id);
     });
     
+    // Bind Normalize button
+    cardEl.querySelector('.btn-normalize').addEventListener('click', async (e) => {
+        const cardId = e.currentTarget.getAttribute('data-id');
+        const btn = e.currentTarget;
+        btn.classList.toggle('active');
+        
+        // Toggle normalized state
+        STATE.activeSeries = getActiveSeriesObjects().map(s => {
+            if (s.merged && s.codes.join('_') === cardId) {
+                return { ...s, normalized: !s.normalized };
+            }
+            return s;
+        });
+        saveStateToLocal();
+        
+        await refreshSingleMergedCard(cardId);
+    });
+    
     // Bind Unmerge button
     cardEl.querySelector('.btn-unmerge').addEventListener('click', (e) => {
         const id = e.currentTarget.getAttribute('data-id');
@@ -1380,15 +1447,30 @@ function renderMergedChart(result) {
     if (!canvasEl) return;
     const ctx = canvasEl.getContext('2d');
     
+    const isNormalized = !!result.normalized;
+    
     const datasets = result.datasets
         .filter(ds => ds.data && !ds.error)
         .map((ds, idx) => {
             const colorScheme = CHART_COLORS[idx % CHART_COLORS.length];
-            const values = ds.data.observations.map(o => o.value);
             const customLabel = (result.customLabels && result.customLabels[ds.code]) || ds.data.name;
+            
+            let dataPoints;
+            if (isNormalized) {
+                const firstObs = ds.data.observations.find(o => o.value !== null && o.value !== undefined);
+                const baseValue = (firstObs && firstObs.value !== 0) ? firstObs.value : 1;
+                dataPoints = ds.data.observations.map(o => ({
+                    x: o.date,
+                    y: o.value !== null ? (o.value / baseValue) * 100 : null
+                }));
+            } else {
+                dataPoints = ds.data.observations.map(o => ({ x: o.date, y: o.value }));
+            }
+            
+            const values = ds.data.observations.map(o => o.value);
             return {
                 label: customLabel,
-                data: ds.data.observations.map(o => ({ x: o.date, y: o.value })),
+                data: dataPoints,
                 borderColor: colorScheme.border,
                 backgroundColor: colorScheme.fill,
                 borderWidth: 2.5,
@@ -1451,7 +1533,6 @@ function renderMergedChart(result) {
                         label: (context) => {
                             const label = context.dataset.label || '';
                             const value = context.raw.y;
-                            let formattedVal = value.toLocaleString();
                             // Find unit measure from the dataset series metadata if available
                             const originalDs = result.datasets.find(ds => {
                                 if (!ds.data) return false;
@@ -1459,7 +1540,17 @@ function renderMergedChart(result) {
                                 return dsLabel === label;
                             });
                             const unit = (originalDs && originalDs.data.metadata['UNIT_MEASURE']) || '';
-                            return `${label}: ${formattedVal} ${unit}`;
+                            
+                            if (isNormalized && originalDs && originalDs.data) {
+                                const origObs = originalDs.data.observations[context.dataIndex];
+                                const origVal = origObs ? origObs.value : null;
+                                const formattedOrig = origVal !== null && origVal !== undefined ? `${origVal.toLocaleString()} ${unit}` : '';
+                                const formattedVal = typeof value === 'number' ? value.toFixed(1) : value;
+                                return `${label}: ${formattedVal} (מקור: ${formattedOrig})`;
+                            } else {
+                                let formattedVal = typeof value === 'number' ? value.toLocaleString() : value;
+                                return `${label}: ${formattedVal} ${unit}`;
+                            }
                         }
                     }
                 }
@@ -1745,7 +1836,8 @@ function mergeSelectedCharts() {
         codes: combinedCodes,
         range: itemsToMerge[0].range || '5y',
         merged: true,
-        customLabels: customLabels
+        customLabels: customLabels,
+        normalized: !!itemsToMerge[0].normalized
     };
     
     // Replace selected cards in activeSeries with the new merged card
