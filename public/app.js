@@ -853,8 +853,13 @@ function showFormError(message) {
 }
 
 // Remove series code from dashboard
-function removeSeries(code) {
-    STATE.activeSeries = getActiveSeriesObjects().filter(s => s.code !== code);
+function removeSeries(id) {
+    STATE.activeSeries = getActiveSeriesObjects().filter(s => {
+        if (s.merged) {
+            return s.codes.join('_') !== id;
+        }
+        return s.code !== id;
+    });
     saveStateToLocal();
     refreshDashboard();
     
