@@ -9,7 +9,9 @@ const PORT = process.env.PORT || 3000;
 
 // Path to dataflows structure JSON and local lookup cache
 const DATAFLOWS_FILE = path.join(__dirname, 'dataflows.json');
-const CACHE_FILE = path.join(__dirname, 'series_dataflow_cache.json');
+const CACHE_FILE = process.env.VERCEL || process.env.NODE_ENV === 'production'
+    ? '/tmp/series_dataflow_cache.json'
+    : path.join(__dirname, 'series_dataflow_cache.json');
 
 // Load dataflows
 let dataflows = [];
