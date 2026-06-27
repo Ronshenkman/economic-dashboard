@@ -41,24 +41,35 @@ let mongoClient = null;
 let db = null;
 const MONGODB_URI = process.env.MONGODB_URI;
 
+let clientPromise = null;
+
 async function connectToMongoDB() {
     if (!MONGODB_URI) {
         console.warn("WARNING: MONGODB_URI environment variable is not defined. Active series will not persist.");
         return null;
     }
-    try {
+    
+    if (db) return db;
+    
+    if (!clientPromise) {
         console.log("Connecting to MongoDB...");
-        mongoClient = new MongoClient(MONGODB_URI);
-        await mongoClient.connect();
-        db = mongoClient.db('economic_dashboard');
-        console.log("Connected to MongoDB successfully!");
-        return db;
-    } catch (err) {
-        console.error("Failed to connect to MongoDB:", err.message);
-        db = null;
-        mongoClient = null;
-        return null;
+        mongoClient = new MongoClient(MONGODB_URI, {
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 5000
+        });
+        clientPromise = mongoClient.connect().then(() => {
+            db = mongoClient.db('economic_dashboard');
+            console.log("Connected to MongoDB successfully!");
+            return db;
+        }).catch(err => {
+            console.error("Failed to connect to MongoDB:", err.message);
+            clientPromise = null;
+            db = null;
+            mongoClient = null;
+            return null;
+        });
     }
+    return clientPromise;
 }
 
 // Load active series from MongoDB
@@ -504,6 +515,8 @@ app.get('/api/series-search', async (req, res) => {
 app.get('/api/active-series', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     
+    await connectToMongoDB();
+    
     if (!db) {
         return res.status(500).json({ error: 'Database connection not established. Please define MONGODB_URI.' });
     }
@@ -528,6 +541,8 @@ app.post('/api/active-series', async (req, res) => {
             error: 'Body must be a JSON array of series. Received type: ' + (typeof list) 
         });
     }
+    
+    await connectToMongoDB();
     
     if (!db) {
         return res.status(500).json({ 
