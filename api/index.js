@@ -371,9 +371,11 @@ app.get('/api/series-search', async (req, res) => {
         return res.status(400).json({ error: 'Missing required parameters: dataflowID, agencyID' });
     }
     
-    const searchCacheDir = path.join(__dirname, 'search_cache');
+    const searchCacheDir = process.env.VERCEL || process.env.NODE_ENV === 'production'
+        ? '/tmp/search_cache'
+        : path.join(__dirname, 'search_cache');
     if (!fs.existsSync(searchCacheDir)) {
-        try { fs.mkdirSync(searchCacheDir); } catch (e) {}
+        try { fs.mkdirSync(searchCacheDir, { recursive: true }); } catch (e) {}
     }
     
     const cacheFilePath = path.join(searchCacheDir, `${dataflowID}.json`);
